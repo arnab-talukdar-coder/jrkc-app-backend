@@ -44,6 +44,7 @@ jobs:
             TARGET_DIR="${{ steps.env-spec.outputs.TARGET_PATH }}"
             PM2_APP="${{ steps.env-spec.outputs.PM2_NAME }}"
             ENV_MODE="${{ steps.env-spec.outputs.ENV_NAME }}"
+            PORT_NUM="${{ steps.env-spec.outputs.HEALTH_PORT }}"
 
             echo "🚀 Deploying $ENV_MODE environment to $TARGET_DIR from branch ${{ github.ref_name }}..."
 
@@ -51,13 +52,31 @@ jobs:
             mkdir -p $TARGET_DIR
             cd $TARGET_DIR
 
-            # If git repo exists, pull latest code, otherwise clone
+            # Clean up nested subfolder if git clone created one previously
+            if [ -d "jrkc-app-backend" ]; then
+              cp -r jrkc-app-backend/* . 2>/dev/null || true
+              cp -r jrkc-app-backend/.* . 2>/dev/null || true
+              rm -rf jrkc-app-backend
+            fi
+
+            # Handle Git Repo Initialization or Pull
             if [ -d ".git" ]; then
               git fetch --all
+              git checkout ${{ github.ref_name }} || git checkout -b ${{ github.ref_name }} origin/${{ github.ref_name }}
               git reset --hard origin/${{ github.ref_name }}
             else
-              git clone https://github.com/${{ github.repository }}.git .
-              git checkout ${{ github.ref_name }}
+              cd ..
+              rm -rf $TARGET_DIR
+              mkdir -p $TARGET_DIR
+              cd $TARGET_DIR
+              git clone -b ${{ github.ref_name }} https://github.com/${{ github.repository }}.git .
+            fi
+
+            # Auto-create .env file if missing
+            if [ ! -f ".env" ]; then
+              echo "PORT=$PORT_NUM" > .env
+              echo "NODE_ENV=$ENV_MODE" >> .env
+              echo "MONGODB_URI=mongodb://localhost:27017/jrkc_hr_$ENV_MODE" >> .env
             fi
 
             # Install production dependencies
@@ -65,10 +84,10 @@ jobs:
 
             # Start or restart PM2 app
             if pm2 describe $PM2_APP > /dev/null 2>&1; then
-              echo "Restarting PM2 process $PM2_APP..."
-              pm2 reload ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE
+              echo "Reloading PM2 process $PM2_APP..."
+              pm2 reload ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE || pm2 restart $PM2_APP
             else
-              echo "Starting new PM2 process $PM2_APP..."
+              echo "Starting PM2 process $PM2_APP..."
               pm2 start ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE
             fi
 
@@ -79,4 +98,4 @@ jobs:
             sleep 3
 
             echo "✅ Deployment complete! Checking health status..."
-            curl -f http://localhost:${{ steps.env-spec.outputs.HEALTH_PORT }}/api/health || exit 1
+            curl -f http://localhost:$PORT_NUM/api/health || exit 1

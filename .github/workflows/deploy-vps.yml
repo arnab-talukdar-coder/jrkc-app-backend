@@ -60,8 +60,8 @@ jobs:
               git checkout ${{ github.ref_name }}
             fi
 
-            # Install dependencies
-            npm ci --only=production
+            # Install production dependencies
+            npm install --omit=dev
 
             # Start or restart PM2 app
             if pm2 describe $PM2_APP > /dev/null 2>&1; then
@@ -72,8 +72,11 @@ jobs:
               pm2 start ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE
             fi
 
-            # Save PM2 process list so it restarts on VPS reboot
+            # Save PM2 process list
             pm2 save
+
+            # Sleep 3 seconds to allow Express server initialization
+            sleep 3
 
             echo "✅ Deployment complete! Checking health status..."
             curl -f http://localhost:${{ steps.env-spec.outputs.HEALTH_PORT }}/api/health || exit 1

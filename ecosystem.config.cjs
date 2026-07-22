@@ -10,6 +10,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 5000
+      },
+      env_production: {
+        NODE_ENV: 'production',
+        PORT: 5000
       }
     },
     {
@@ -20,6 +24,10 @@ module.exports = {
       watch: false,
       max_memory_restart: '300M',
       env: {
+        NODE_ENV: 'test',
+        PORT: 5001
+      },
+      env_test: {
         NODE_ENV: 'test',
         PORT: 5001
       }

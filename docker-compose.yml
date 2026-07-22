@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend-prod:
+    build: .
+    container_name: jrkc-backend-prod
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+
+  backend-test:
+    build: .
+    container_name: jrkc-backend-test
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=test
+      - PORT=5001

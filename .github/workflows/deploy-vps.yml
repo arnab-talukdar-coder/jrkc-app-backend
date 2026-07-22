@@ -1,0 +1,79 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches:
+      - dev-prod
+      - dev-test
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: SSH Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Determine Target Environment & Directory
+        id: env-spec
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/dev-prod" ] || [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            echo "ENV_NAME=production" >> $GITHUB_OUTPUT
+            echo "PM2_NAME=jrkc-backend-prod" >> $GITHUB_OUTPUT
+            echo "TARGET_PATH=${{ secrets.VPS_PROD_PATH || '/var/www/jrkc-backend-prod' }}" >> $GITHUB_OUTPUT
+            echo "HEALTH_PORT=5000" >> $GITHUB_OUTPUT
+          else
+            echo "ENV_NAME=test" >> $GITHUB_OUTPUT
+            echo "PM2_NAME=jrkc-backend-test" >> $GITHUB_OUTPUT
+            echo "TARGET_PATH=${{ secrets.VPS_TEST_PATH || '/var/www/jrkc-backend-test' }}" >> $GITHUB_OUTPUT
+            echo "HEALTH_PORT=5001" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Execute Remote Deployment via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            TARGET_DIR="${{ steps.env-spec.outputs.TARGET_PATH }}"
+            PM2_APP="${{ steps.env-spec.outputs.PM2_NAME }}"
+            ENV_MODE="${{ steps.env-spec.outputs.ENV_NAME }}"
+
+            echo "🚀 Deploying $ENV_MODE environment to $TARGET_DIR from branch ${{ github.ref_name }}..."
+
+            # Ensure target directory exists
+            mkdir -p $TARGET_DIR
+            cd $TARGET_DIR
+
+            # If git repo exists, pull latest code, otherwise clone
+            if [ -d ".git" ]; then
+              git fetch --all
+              git reset --hard origin/${{ github.ref_name }}
+            else
+              git clone https://github.com/${{ github.repository }}.git .
+              git checkout ${{ github.ref_name }}
+            fi
+
+            # Install dependencies
+            npm ci --only=production
+
+            # Start or restart PM2 app
+            if pm2 describe $PM2_APP > /dev/null 2>&1; then
+              echo "Restarting PM2 process $PM2_APP..."
+              pm2 reload ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE
+            else
+              echo "Starting new PM2 process $PM2_APP..."
+              pm2 start ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE
+            fi
+
+            # Save PM2 process list so it restarts on VPS reboot
+            pm2 save
+
+            echo "✅ Deployment complete! Checking health status..."
+            curl -f http://localhost:${{ steps.env-spec.outputs.HEALTH_PORT }}/api/health || exit 1

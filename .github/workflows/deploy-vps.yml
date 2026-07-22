@@ -72,24 +72,17 @@ jobs:
               git clone -b ${{ github.ref_name }} https://github.com/${{ github.repository }}.git .
             fi
 
-            # Auto-create .env file if missing
-            if [ ! -f ".env" ]; then
-              echo "PORT=$PORT_NUM" > .env
-              echo "NODE_ENV=$ENV_MODE" >> .env
-              echo "MONGODB_URI=mongodb://localhost:27017/jrkc_hr_$ENV_MODE" >> .env
-            fi
+            # Ensure correct .env file exists with strict PORT configuration
+            echo "PORT=$PORT_NUM" > .env
+            echo "NODE_ENV=$ENV_MODE" >> .env
+            echo "MONGODB_URI=mongodb://localhost:27017/jrkc_hr_$ENV_MODE" >> .env
 
             # Install production dependencies
             npm install --omit=dev
 
-            # Start or restart PM2 app
-            if pm2 describe $PM2_APP > /dev/null 2>&1; then
-              echo "Reloading PM2 process $PM2_APP..."
-              pm2 reload ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE || pm2 restart $PM2_APP
-            else
-              echo "Starting PM2 process $PM2_APP..."
-              pm2 start ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE
-            fi
+            # Delete existing PM2 process to clear cached env vars, then start fresh with new env
+            pm2 delete $PM2_APP > /dev/null 2>&1 || true
+            pm2 start ecosystem.config.cjs --only $PM2_APP --env $ENV_MODE --update-env
 
             # Save PM2 process list
             pm2 save

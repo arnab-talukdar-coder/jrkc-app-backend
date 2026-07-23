@@ -276,11 +276,11 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Incorrect password. Please try again.' });
   }
 
-  // Issue JWT token
+  // Issue JWT token (Valid for 7 Days)
   const token = jwt.sign(
     { id: user.id, email: user.email, userRole: user.userRole, name: user.name },
     JWT_SECRET,
-    { expiresIn: '8h' }
+    { expiresIn: '7d' }
   );
 
   res.json({
@@ -403,11 +403,11 @@ app.post('/api/auth/register-admin', async (req, res) => {
     type: 'registration'
   });
 
-  // Issue token immediately so they are logged in
+  // Issue token immediately so they are logged in (Valid for 7 Days)
   const token = jwt.sign(
     { id: newAdmin.id, email: newAdmin.email, userRole: newAdmin.userRole, name: newAdmin.name },
     JWT_SECRET,
-    { expiresIn: '8h' }
+    { expiresIn: '7d' }
   );
 
   res.status(201).json({ message: 'Admin account registered successfully', token, user: newAdmin });

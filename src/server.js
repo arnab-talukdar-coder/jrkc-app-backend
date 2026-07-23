@@ -27,6 +27,7 @@ import {
 } from './data/initialData.js';
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = [

@@ -6,12 +6,15 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "start:test": "node -e \"process.env.NODE_ENV='test'; process.env.PORT='5001'; import('./src/server.js')\"",
+    "dev": "node --watch src/server.js",
+    "dev:test": "node --watch -e \"process.env.NODE_ENV='test'; process.env.PORT='5001'; import('./src/server.js')\""
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "mongoose": "^8.9.5"
+    "mongoose": "^8.9.5",
+    "nodemailer": "^9.0.3"
   }
 }

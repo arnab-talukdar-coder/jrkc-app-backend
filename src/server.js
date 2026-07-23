@@ -6,13 +6,24 @@ import { Employee } from './models/Employee.js';
 import { Approval } from './models/Approval.js';
 import { Announcement } from './models/Announcement.js';
 import { BankDetails } from './models/BankDetails.js';
+import { RegistrationRequest } from './models/RegistrationRequest.js';
+import { Payslip } from './models/Payslip.js';
+import { Notification } from './models/Notification.js';
+import {
+  sendAdminRegistrationAlert,
+  sendEmployeeApprovalEmail,
+  sendLeaveRequestAlert,
+  sendLeaveStatusNotification,
+  sendPayslipEmail
+} from './services/emailService.js';
 import {
   INITIAL_EMPLOYEES,
   INITIAL_APPROVALS,
   INITIAL_ANNOUNCEMENTS,
   INITIAL_BANK_DETAILS,
   INITIAL_TAX_DOCS,
-  INITIAL_PAYROLL
+  INITIAL_PAYROLL,
+  INITIAL_REGISTRATION_REQUESTS
 } from './data/initialData.js';
 
 const app = express();
@@ -26,6 +37,19 @@ let memEmployees = [...INITIAL_EMPLOYEES];
 let memApprovals = [...INITIAL_APPROVALS];
 let memAnnouncements = [...INITIAL_ANNOUNCEMENTS];
 let memBankDetails = { ...INITIAL_BANK_DETAILS };
+let memRegistrationRequests = [...INITIAL_REGISTRATION_REQUESTS];
+let memPayslips = [];
+let memNotifications = [
+  {
+    id: 'NOTIF-01',
+    targetRole: 'Admin',
+    title: 'New Registration Request',
+    message: 'Daniel Kim requested employee account registration.',
+    type: 'registration',
+    read: false,
+    createdAtDate: new Date().toLocaleString()
+  }
+];
 let taxDocs = [...INITIAL_TAX_DOCS];
 let payroll = { ...INITIAL_PAYROLL };
 
@@ -38,6 +62,12 @@ async function initDatabase() {
       if (empCount === 0) {
         console.log('Seeding initial employees into MongoDB...');
         await Employee.insertMany(INITIAL_EMPLOYEES);
+      }
+
+      const regCount = await RegistrationRequest.countDocuments();
+      if (regCount === 0) {
+        console.log('Seeding initial registration requests into MongoDB...');
+        await RegistrationRequest.insertMany(INITIAL_REGISTRATION_REQUESTS);
       }
 
       const appCount = await Approval.countDocuments();
@@ -69,22 +99,287 @@ initDatabase();
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    message: 'JRKC HR Portal REST Backend API is running',
+    message: 'JRKC HR Portal REST API Backend is running',
     environment: process.env.NODE_ENV || 'development',
     database: mongoose.connection.readyState === 1 ? 'connected (MongoDB)' : 'disconnected (in-memory fallback)',
     timestamp: new Date()
   });
 });
 
-// Employee Endpoints
-app.get('/api/employees', async (req, res) => {
+// Helper: Push Notification
+async function createNotification(notif) {
+  const newNotif = {
+    id: `NOTIF-${Math.floor(1000 + Math.random() * 9000)}`,
+    read: false,
+    createdAtDate: new Date().toLocaleString(),
+    ...notif
+  };
+
   try {
     if (mongoose.connection.readyState === 1) {
-      const { department, search } = req.query;
+      return await Notification.create(newNotif);
+    }
+  } catch (e) {}
+
+  memNotifications.unshift(newNotif);
+  return newNotif;
+}
+
+// ----------------------------------------------------
+// 1. REGISTRATION & ADMIN APPROVAL WORKFLOW
+// ----------------------------------------------------
+
+// Submit registration request (Candidate/Employee 1st time)
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, phone, department, role, requestedUserRole, assignedHrId, assignedHrName } = req.body;
+
+  if (!name || !email || !department) {
+    return res.status(400).json({ error: 'Name, email, and department are required' });
+  }
+
+  const newReg = {
+    id: `REG-${Math.floor(100 + Math.random() * 900)}`,
+    name,
+    email,
+    phone: phone || '',
+    department,
+    role: role || 'Employee',
+    requestedUserRole: requestedUserRole || 'Employee',
+    assignedHrId: assignedHrId || 'HR-0010',
+    assignedHrName: assignedHrName || 'Sarah Chen',
+    status: 'pending_approval',
+    dateSubmitted: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const saved = await RegistrationRequest.create(newReg);
+      // Email Admin
+      sendAdminRegistrationAlert(saved).catch(err => console.error('Email alert error:', err));
+      // Notify Admin
+      await createNotification({
+        targetRole: 'Admin',
+        title: 'New Registration Request',
+        message: `${name} (${email}) requested account registration for ${department}.`,
+        type: 'registration'
+      });
+      return res.status(201).json(saved);
+    }
+  } catch (e) {}
+
+  memRegistrationRequests.unshift(newReg);
+  sendAdminRegistrationAlert(newReg).catch(err => console.error('Email alert error:', err));
+  await createNotification({
+    targetRole: 'Admin',
+    title: 'New Registration Request',
+    message: `${name} (${email}) requested account registration for ${department}.`,
+    type: 'registration'
+  });
+
+  res.status(201).json(newReg);
+});
+
+// Register Admin User directly
+app.post('/api/auth/register-admin', async (req, res) => {
+  const { name, email, phone, department, role, adminSecret } = req.body;
+
+  const validSecret = process.env.ADMIN_REGISTRATION_SECRET || 'JRKC-ADMIN-2026';
+  if (adminSecret && adminSecret !== validSecret) {
+    return res.status(401).json({ error: 'Invalid Admin Security Key' });
+  }
+
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Name and email are required for Admin registration' });
+  }
+
+  const newAdmin = {
+    id: `HR-${Math.floor(1000 + Math.random() * 9000)}`,
+    name,
+    email,
+    phone: phone || '+1 (555) 000-0000',
+    department: department || 'Executive',
+    role: role || 'Executive Director / Admin',
+    userRole: 'Admin',
+    status: 'Clocked In',
+    accountStatus: 'approved',
+    ptoDays: 30,
+    sickDays: 10,
+    lwpDaysTaken: 0,
+    joiningDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+    baseSalary: 120000,
+    allowances: 15000,
+    taxDeductions: 10000,
+    recentLogs: [],
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80'
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Employee.create(newAdmin);
+    }
+  } catch (e) {}
+
+  memEmployees.unshift(newAdmin);
+
+  // Send welcome email to new Admin
+  sendEmployeeApprovalEmail(newAdmin, null).catch(err => console.error('Admin welcome email error:', err));
+
+  await createNotification({
+    targetRole: 'Admin',
+    title: 'New Admin Account Created',
+    message: `${newAdmin.name} (${newAdmin.email}) registered as Director/Admin.`,
+    type: 'registration'
+  });
+
+  res.status(201).json({ message: 'Admin account registered successfully', admin: newAdmin });
+});
+
+
+// List registration requests for Admin
+app.get('/api/admin/registration-requests', async (req, res) => {
+  const { status } = req.query;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      let query = {};
+      if (status) query.status = status;
+      const list = await RegistrationRequest.find(query).sort({ createdAt: -1 });
+      return res.json(list);
+    }
+  } catch (e) {}
+
+  let list = [...memRegistrationRequests];
+  if (status) list = list.filter(r => r.status === status);
+  res.json(list);
+});
+
+// Admin approves registration request
+app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
+  const { id } = req.params;
+  const { assignedHrId } = req.body;
+
+  let regItem = null;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      regItem = await RegistrationRequest.findOne({ id });
+    }
+  } catch (e) {}
+
+  if (!regItem) {
+    regItem = memRegistrationRequests.find(r => r.id === id);
+  }
+
+  if (!regItem) {
+    return res.status(404).json({ error: 'Registration request not found' });
+  }
+
+  regItem.status = 'approved';
+
+  // Find assigned HR details
+  let hrObj = memEmployees.find(e => e.id === (assignedHrId || regItem.assignedHrId) && e.userRole === 'HR');
+  if (!hrObj) {
+    hrObj = { id: 'HR-0010', name: 'Sarah Chen', email: 'sarah.chen@jrkc.com' };
+  }
+
+  const newEmp = {
+    id: `HR-${Math.floor(1000 + Math.random() * 9000)}`,
+    name: regItem.name,
+    email: regItem.email,
+    phone: regItem.phone,
+    department: regItem.department,
+    role: regItem.role,
+    userRole: regItem.requestedUserRole || 'Employee',
+    status: 'Clocked Out',
+    accountStatus: 'approved',
+    ptoDays: 15,
+    sickDays: 5,
+    lwpDaysTaken: 0,
+    joiningDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+    assignedHrId: hrObj.id,
+    assignedHrName: hrObj.name,
+    assignedHrEmail: hrObj.email,
+    baseSalary: 65000,
+    allowances: 5000,
+    taxDeductions: 3000,
+    recentLogs: [],
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await RegistrationRequest.findOneAndUpdate({ id }, { status: 'approved' });
+      await Employee.create(newEmp);
+    }
+  } catch (e) {}
+
+  const index = memRegistrationRequests.findIndex(r => r.id === id);
+  if (index !== -1) memRegistrationRequests[index].status = 'approved';
+  memEmployees.unshift(newEmp);
+
+  // Trigger emails to Employee & Assigned HR
+  sendEmployeeApprovalEmail(newEmp, hrObj.email).catch(err => console.error('Welcome email error:', err));
+
+  // Notifications
+  await createNotification({
+    targetRole: 'Employee',
+    recipientEmail: newEmp.email,
+    title: 'Account Approved',
+    message: 'Your registration request was approved by Director/Admin. Login access is active.',
+    type: 'registration'
+  });
+
+  await createNotification({
+    targetRole: 'HR',
+    recipientId: hrObj.id,
+    title: 'New Employee Assigned',
+    message: `${newEmp.name} has been approved and assigned to your HR roster.`,
+    type: 'registration'
+  });
+
+  res.json({ message: 'Registration request approved', employee: newEmp });
+});
+
+// Admin rejects registration request
+app.post('/api/admin/registration-requests/:id/reject', async (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const updated = await RegistrationRequest.findOneAndUpdate(
+        { id },
+        { status: 'rejected', rejectionReason: reason || 'Not approved' },
+        { new: true }
+      );
+      if (updated) return res.json(updated);
+    }
+  } catch (e) {}
+
+  const reg = memRegistrationRequests.find(r => r.id === id);
+  if (reg) {
+    reg.status = 'rejected';
+    reg.rejectionReason = reason || 'Not approved';
+    return res.json(reg);
+  }
+  res.status(404).json({ error: 'Registration request not found' });
+});
+
+// ----------------------------------------------------
+// 2. HR LEAVE QUOTA & ASSIGNMENT ENDPOINTS
+// ----------------------------------------------------
+
+// Get employees list (with filtering for assigned HR or role)
+app.get('/api/employees', async (req, res) => {
+  const { department, search, hrId, userRole } = req.query;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
       let query = {};
       if (department && department !== 'All') {
         query.department = new RegExp(`^${department}$`, 'i');
       }
+      if (hrId) query.assignedHrId = hrId;
+      if (userRole) query.userRole = userRole;
       if (search) {
         const q = search.toString();
         query.$or = [
@@ -96,15 +391,17 @@ app.get('/api/employees', async (req, res) => {
       const employees = await Employee.find(query).sort({ createdAt: -1 });
       return res.json(employees);
     }
-  } catch (e) {
-    console.error('DB fetch error, using fallback:', e.message);
-  }
+  } catch (e) {}
 
-  // Fallback to memory
   let result = [...memEmployees];
-  const { department, search } = req.query;
   if (department && department !== 'All') {
     result = result.filter(e => e.department.toLowerCase() === department.toString().toLowerCase());
+  }
+  if (hrId) {
+    result = result.filter(e => e.assignedHrId === hrId);
+  }
+  if (userRole) {
+    result = result.filter(e => e.userRole === userRole);
   }
   if (search) {
     const q = search.toString().toLowerCase();
@@ -113,171 +410,428 @@ app.get('/api/employees', async (req, res) => {
   res.json(result);
 });
 
-app.post('/api/employees', async (req, res) => {
-  const newEmpData = {
-    id: `HR-${Math.floor(1000 + Math.random() * 9000)}`,
-    joiningDate: 'Just now',
-    ptoDays: 15,
-    sickDays: 5,
-    status: 'Clocked Out',
-    recentLogs: [],
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-    ...req.body
-  };
-
-  try {
-    if (mongoose.connection.readyState === 1) {
-      const created = await Employee.create(newEmpData);
-      return res.status(201).json(created);
-    }
-  } catch (e) {
-    console.error('DB save error:', e.message);
-  }
-
-  memEmployees.unshift(newEmpData);
-  res.status(201).json(newEmpData);
-});
-
-app.put('/api/employees/:id', async (req, res) => {
+// HR changes yearly leave quota for employee
+app.put('/api/hr/employees/:id/leave-quota', async (req, res) => {
   const { id } = req.params;
-  try {
-    if (mongoose.connection.readyState === 1) {
-      const updated = await Employee.findOneAndUpdate({ id }, req.body, { new: true });
-      if (updated) return res.json(updated);
-    }
-  } catch (e) {}
+  const { ptoDays, sickDays, baseSalary } = req.body;
 
-  const index = memEmployees.findIndex(e => e.id === id);
-  if (index !== -1) {
-    memEmployees[index] = { ...memEmployees[index], ...req.body };
-    return res.json(memEmployees[index]);
-  }
-  res.status(404).json({ error: 'Employee not found' });
-});
-
-// Clock In / Clock Out Endpoint
-app.post('/api/employees/:id/clock', async (req, res) => {
-  const { id } = req.params;
-  const { status, clockTime } = req.body;
+  const updateData = {};
+  if (ptoDays !== undefined) updateData.ptoDays = Number(ptoDays);
+  if (sickDays !== undefined) updateData.sickDays = Number(sickDays);
+  if (baseSalary !== undefined) updateData.baseSalary = Number(baseSalary);
 
   try {
     if (mongoose.connection.readyState === 1) {
-      const emp = await Employee.findOne({ id });
-      if (emp) {
-        emp.status = status;
-        emp.clockTime = clockTime;
-        if (status === 'Clocked In') {
-          emp.recentLogs.unshift({
-            date: 'Today',
-            hours: `${clockTime} - Present`,
-            duration: 'Active',
-            status: 'Active'
-          });
-        }
-        await emp.save();
-        return res.json(emp);
+      const updated = await Employee.findOneAndUpdate({ id }, updateData, { new: true });
+      if (updated) {
+        await createNotification({
+          targetRole: 'Employee',
+          recipientId: id,
+          title: 'Leave Quota Updated',
+          message: `Your HR updated your leave quota: ${ptoDays !== undefined ? ptoDays + ' Paid Days, ' : ''}${sickDays !== undefined ? sickDays + ' Sick Days' : ''}.`,
+          type: 'quota_update'
+        });
+        return res.json(updated);
       }
     }
   } catch (e) {}
 
-  const index = memEmployees.findIndex(e => e.id === id);
-  if (index !== -1) {
-    memEmployees[index].status = status;
-    memEmployees[index].clockTime = clockTime;
-    if (status === 'Clocked In') {
-      memEmployees[index].recentLogs.unshift({
-        date: 'Today',
-        hours: `${clockTime} - Present`,
-        duration: 'Active',
-        status: 'Active'
-      });
-    }
-    return res.json(memEmployees[index]);
+  const emp = memEmployees.find(e => e.id === id);
+  if (emp) {
+    if (ptoDays !== undefined) emp.ptoDays = Number(ptoDays);
+    if (sickDays !== undefined) emp.sickDays = Number(sickDays);
+    if (baseSalary !== undefined) emp.baseSalary = Number(baseSalary);
+
+    await createNotification({
+      targetRole: 'Employee',
+      recipientId: id,
+      title: 'Leave Quota Updated',
+      message: `Your HR updated your leave quota: ${ptoDays !== undefined ? ptoDays + ' Paid Days, ' : ''}${sickDays !== undefined ? sickDays + ' Sick Days' : ''}.`,
+      type: 'quota_update'
+    });
+
+    return res.json(emp);
   }
   res.status(404).json({ error: 'Employee not found' });
 });
 
-// Approvals & Leave Requests Endpoints
-app.get('/api/approvals', async (req, res) => {
+// Admin updates assigned HR for an employee
+app.put('/api/admin/employees/:id/assign-hr', async (req, res) => {
+  const { id } = req.params;
+  const { assignedHrId, assignedHrName, assignedHrEmail } = req.body;
+
+  const updateFields = { assignedHrId, assignedHrName, assignedHrEmail };
+
   try {
     if (mongoose.connection.readyState === 1) {
-      const approvals = await Approval.find().sort({ createdAt: -1 });
-      return res.json(approvals);
+      const updated = await Employee.findOneAndUpdate({ id }, updateFields, { new: true });
+      if (updated) return res.json(updated);
     }
   } catch (e) {}
-  res.json(memApprovals);
+
+  const emp = memEmployees.find(e => e.id === id);
+  if (emp) {
+    Object.assign(emp, updateFields);
+    return res.json(emp);
+  }
+  res.status(404).json({ error: 'Employee not found' });
 });
 
+// ----------------------------------------------------
+// 3. LEAVE REQUESTS & HR APPROVAL (INCLUDING LWP)
+// ----------------------------------------------------
+
+// Submit leave request by Employee
 app.post('/api/approvals', async (req, res) => {
+  const { employeeId, employeeName, type, details, subDetails, startDate, endDate, totalDays, isLwp } = req.body;
+
+  // Find employee to obtain assigned HR
+  let emp = memEmployees.find(e => e.id === employeeId || e.name === employeeName);
+  if (!emp && mongoose.connection.readyState === 1) {
+    try { emp = await Employee.findOne({ $or: [{ id: employeeId }, { name: employeeName }] }); } catch (e) {}
+  }
+
+  const assignedHrId = emp ? emp.assignedHrId : 'HR-0010';
+  const assignedHrName = emp ? emp.assignedHrName : 'Sarah Chen';
+  const assignedHrEmail = emp ? emp.assignedHrEmail : 'sarah.chen@jrkc.com';
+
+  const daysCount = Number(totalDays) || 1;
+  const isLwpLeave = isLwp || type === 'LWP' || type === 'Leave Without Pay';
+
   const newApproval = {
     id: `REQ-${Math.floor(100 + Math.random() * 900)}`,
+    employeeId: emp ? emp.id : employeeId,
+    employeeName: employeeName || (emp ? emp.name : 'Employee'),
+    role: emp ? emp.role : 'Employee',
+    avatar: emp ? emp.avatar : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+    type: type || (isLwpLeave ? 'LWP Leave' : 'Annual Leave'),
+    details: details || `${daysCount} Day(s) Leave`,
+    subDetails: subDetails || '',
+    assignedHrId,
+    assignedHrName,
+    assignedHrEmail,
+    startDate: startDate || '',
+    endDate: endDate || '',
+    totalDays: daysCount,
+    isLwp: isLwpLeave,
+    lwpDays: isLwpLeave ? daysCount : 0,
     status: 'pending',
-    dateSubmitted: 'Just now',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-    ...req.body
+    dateSubmitted: 'Just now'
   };
 
   try {
     if (mongoose.connection.readyState === 1) {
       const created = await Approval.create(newApproval);
+      sendLeaveRequestAlert(created, assignedHrEmail).catch(err => console.error('Leave email error:', err));
+      await createNotification({
+        targetRole: 'HR',
+        recipientId: assignedHrId,
+        title: 'New Leave Request',
+        message: `${newApproval.employeeName} requested ${newApproval.type} (${newApproval.totalDays} day(s)).`,
+        type: 'leave_request'
+      });
+      await createNotification({
+        targetRole: 'Admin',
+        title: 'Leave Request Submitted',
+        message: `${newApproval.employeeName} submitted a leave request to HR ${assignedHrName}.`,
+        type: 'leave_request'
+      });
       return res.status(201).json(created);
     }
   } catch (e) {}
 
   memApprovals.unshift(newApproval);
+  sendLeaveRequestAlert(newApproval, assignedHrEmail).catch(err => console.error('Leave email error:', err));
+  await createNotification({
+    targetRole: 'HR',
+    recipientId: assignedHrId,
+    title: 'New Leave Request',
+    message: `${newApproval.employeeName} requested ${newApproval.type} (${newApproval.totalDays} day(s)).`,
+    type: 'leave_request'
+  });
+  await createNotification({
+    targetRole: 'Admin',
+    title: 'Leave Request Submitted',
+    message: `${newApproval.employeeName} submitted a leave request to HR ${assignedHrName}.`,
+    type: 'leave_request'
+  });
+
   res.status(201).json(newApproval);
 });
 
-app.patch('/api/approvals/:id', async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
+// HR lists approvals (filtered by assigned HR or status)
+app.get('/api/approvals', async (req, res) => {
+  const { hrId, status } = req.query;
 
   try {
     if (mongoose.connection.readyState === 1) {
-      const updated = await Approval.findOneAndUpdate({ id }, { status }, { new: true });
+      let query = {};
+      if (hrId) query.assignedHrId = hrId;
+      if (status) query.status = status;
+      const approvals = await Approval.find(query).sort({ createdAt: -1 });
+      return res.json(approvals);
+    }
+  } catch (e) {}
+
+  let list = [...memApprovals];
+  if (hrId) list = list.filter(a => a.assignedHrId === hrId);
+  if (status) list = list.filter(a => a.status === status);
+  res.json(list);
+});
+
+// HR Approves or Rejects Leave Request
+app.patch('/api/approvals/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // 'approved' | 'rejected'
+
+  let item = null;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      item = await Approval.findOne({ id });
+    }
+  } catch (e) {}
+
+  if (!item) {
+    item = memApprovals.find(a => a.id === id);
+  }
+
+  if (!item) {
+    return res.status(404).json({ error: 'Approval request not found' });
+  }
+
+  item.status = status;
+
+  // If approved and it is LWP or Paid Leave, update employee leave count
+  let emp = memEmployees.find(e => e.id === item.employeeId || e.name === item.employeeName);
+  if (status === 'approved' && emp) {
+    if (item.isLwp || item.type.includes('LWP')) {
+      emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + item.totalDays;
+    } else if (item.type.includes('Annual') || item.type.includes('PTO')) {
+      emp.ptoDays = Math.max(0, (emp.ptoDays || 15) - item.totalDays);
+    } else if (item.type.includes('Sick')) {
+      emp.sickDays = Math.max(0, (emp.sickDays || 5) - item.totalDays);
+    }
+  }
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Approval.findOneAndUpdate({ id }, { status });
+      if (status === 'approved' && emp) {
+        await Employee.findOneAndUpdate(
+          { id: emp.id },
+          { lwpDaysTaken: emp.lwpDaysTaken, ptoDays: emp.ptoDays, sickDays: emp.sickDays }
+        );
+      }
+    }
+  } catch (e) {}
+
+  // Send Email & Notifications
+  const empEmail = emp ? emp.email : `${item.employeeName.toLowerCase().replace(' ', '.')}@luxehr.com`;
+  sendLeaveStatusNotification(item, empEmail).catch(err => console.error('Leave decision email error:', err));
+
+  await createNotification({
+    targetRole: 'Employee',
+    recipientEmail: empEmail,
+    title: `Leave Request ${status.toUpperCase()}`,
+    message: `Your leave request for ${item.type} (${item.totalDays} day(s)) has been ${status} by HR.`,
+    type: status === 'approved' ? 'leave_approval' : 'leave_rejection'
+  });
+
+  await createNotification({
+    targetRole: 'Admin',
+    title: `Leave Request Decision`,
+    message: `HR ${item.assignedHrName || ''} marked leave request for ${item.employeeName} as ${status}.`,
+    type: 'system'
+  });
+
+  res.json(item);
+});
+
+// ----------------------------------------------------
+// 4. PAYSLIP GENERATION, LWP CALCULATION & EMAIL DISPATCH
+// ----------------------------------------------------
+
+// Generate Payslip & Send Email to Employee (with CC to HR & Admin)
+app.post('/api/payslips/generate', async (req, res) => {
+  const { employeeId, payPeriod, workingDaysInMonth, customLwpDays } = req.body;
+
+  let emp = memEmployees.find(e => e.id === employeeId);
+  if (!emp && mongoose.connection.readyState === 1) {
+    try { emp = await Employee.findOne({ id: employeeId }); } catch (e) {}
+  }
+
+  if (!emp) {
+    return res.status(404).json({ error: 'Employee not found' });
+  }
+
+  const totalDaysInMonth = Number(workingDaysInMonth) || 30;
+  const lwpDays = customLwpDays !== undefined ? Number(customLwpDays) : (emp.lwpDaysTaken || 0);
+
+  const baseSalary = emp.baseSalary || 65000;
+  const perDaySalary = Math.round((baseSalary / totalDaysInMonth) * 100) / 100;
+  const lwpDeduction = Math.round(perDaySalary * lwpDays * 100) / 100;
+
+  const allowances = emp.allowances || 5000;
+  const taxDeductions = emp.taxDeductions || 3000;
+
+  const grossSalary = baseSalary + allowances;
+  const totalDeductions = lwpDeduction + taxDeductions;
+  const netPay = grossSalary - totalDeductions;
+
+  const newPayslip = {
+    id: `PAY-${Math.floor(1000 + Math.random() * 9000)}`,
+    employeeId: emp.id,
+    employeeName: emp.name,
+    employeeEmail: emp.email,
+    department: emp.department,
+    role: emp.role,
+    assignedHrName: emp.assignedHrName || 'Sarah Chen',
+    payPeriod: payPeriod || 'October 2026',
+    payDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+    workingDaysInMonth: totalDaysInMonth,
+    baseSalary,
+    perDaySalary,
+    lwpDays,
+    lwpDeduction,
+    allowances,
+    taxDeductions,
+    totalDeductions,
+    grossSalary,
+    netPay,
+    emailStatus: 'sent',
+    sentAt: new Date()
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Payslip.create(newPayslip);
+    }
+  } catch (e) {}
+
+  memPayslips.unshift(newPayslip);
+
+  // Send Email with payslip to Employee (CC to Assigned HR & Admin)
+  sendPayslipEmail(newPayslip, emp.assignedHrEmail).catch(err => console.error('Payslip email error:', err));
+
+  // In-app notifications
+  await createNotification({
+    targetRole: 'Employee',
+    recipientEmail: emp.email,
+    title: 'New Payslip Available',
+    message: `Your payslip for ${newPayslip.payPeriod} has been generated and sent to your email. Net Pay: $${netPay.toLocaleString()}. (LWP Deduction: $${lwpDeduction}).`,
+    type: 'payslip'
+  });
+
+  await createNotification({
+    targetRole: 'HR',
+    recipientId: emp.assignedHrId,
+    title: 'Payslip Dispatched',
+    message: `Payslip for ${emp.name} (${newPayslip.payPeriod}) generated & emailed successfully.`,
+    type: 'payslip'
+  });
+
+  await createNotification({
+    targetRole: 'Admin',
+    title: 'Payroll Dispatched',
+    message: `Payslip for ${emp.name} dispatched for ${newPayslip.payPeriod}. Net Pay: $${netPay.toLocaleString()}.`,
+    type: 'payslip'
+  });
+
+  res.status(201).json({ message: 'Payslip generated and sent to email successfully', payslip: newPayslip });
+});
+
+// Get payslips for employee
+app.get('/api/payslips/employee/:employeeId', async (req, res) => {
+  const { employeeId } = req.params;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const list = await Payslip.find({ employeeId }).sort({ createdAt: -1 });
+      if (list.length > 0) return res.json(list);
+    }
+  } catch (e) {}
+
+  const list = memPayslips.filter(p => p.employeeId === employeeId);
+  res.json(list);
+});
+
+// Get all payslips (for Admin/HR)
+app.get('/api/payslips', async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const list = await Payslip.find().sort({ createdAt: -1 });
+      return res.json(list);
+    }
+  } catch (e) {}
+
+  res.json(memPayslips);
+});
+
+// ----------------------------------------------------
+// 5. NOTIFICATIONS ENDPOINTS
+// ----------------------------------------------------
+
+app.get('/api/notifications', async (req, res) => {
+  const { targetRole, recipientEmail, recipientId } = req.query;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      let query = {};
+      if (targetRole) {
+        query.$or = [
+          { targetRole: targetRole },
+          { targetRole: 'All' },
+          { recipientEmail: recipientEmail },
+          { recipientId: recipientId }
+        ];
+      }
+      const list = await Notification.find(query).sort({ createdAt: -1 });
+      return res.json(list);
+    }
+  } catch (e) {}
+
+  let list = [...memNotifications];
+  if (targetRole) {
+    list = list.filter(n =>
+      n.targetRole === targetRole ||
+      n.targetRole === 'All' ||
+      (recipientEmail && n.recipientEmail === recipientEmail) ||
+      (recipientId && n.recipientId === recipientId)
+    );
+  }
+  res.json(list);
+});
+
+app.patch('/api/notifications/:id/read', async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const updated = await Notification.findOneAndUpdate({ id }, { read: true }, { new: true });
       if (updated) return res.json(updated);
     }
   } catch (e) {}
 
-  const item = memApprovals.find(a => a.id === id);
-  if (item) {
-    item.status = status;
-    return res.json(item);
+  const n = memNotifications.find(x => x.id === id);
+  if (n) {
+    n.read = true;
+    return res.json(n);
   }
-  res.status(404).json({ error: 'Approval request not found' });
+  res.status(404).json({ error: 'Notification not found' });
 });
 
-// Announcements Endpoints
+// ----------------------------------------------------
+// 6. ANNOUNCEMENTS, BANK DETAILS & TAX DOCS
+// ----------------------------------------------------
+
 app.get('/api/announcements', async (req, res) => {
   try {
     if (mongoose.connection.readyState === 1) {
-      const announcements = await Announcement.find().sort({ createdAt: -1 });
-      return res.json(announcements);
+      const list = await Announcement.find().sort({ createdAt: -1 });
+      return res.json(list);
     }
   } catch (e) {}
   res.json(memAnnouncements);
 });
 
-app.post('/api/announcements', async (req, res) => {
-  const newAnn = {
-    id: `ANN-${Math.floor(100 + Math.random() * 900)}`,
-    time: 'Just now',
-    image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
-    ...req.body
-  };
-
-  try {
-    if (mongoose.connection.readyState === 1) {
-      const created = await Announcement.create(newAnn);
-      return res.status(201).json(created);
-    }
-  } catch (e) {}
-
-  memAnnouncements.unshift(newAnn);
-  res.status(201).json(newAnn);
-});
-
-// Bank Details Endpoints
 app.get('/api/bank-details', async (req, res) => {
   try {
     if (mongoose.connection.readyState === 1) {
@@ -288,34 +842,9 @@ app.get('/api/bank-details', async (req, res) => {
   res.json(memBankDetails);
 });
 
-app.put('/api/bank-details', async (req, res) => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      let bank = await BankDetails.findOne();
-      if (bank) {
-        Object.assign(bank, req.body);
-        await bank.save();
-        return res.json(bank);
-      } else {
-        bank = await BankDetails.create({ ...INITIAL_BANK_DETAILS, ...req.body });
-        return res.json(bank);
-      }
-    }
-  } catch (e) {}
-
-  memBankDetails = { ...memBankDetails, ...req.body };
-  res.json(memBankDetails);
-});
-
-// Tax Docs & Payroll Endpoints
-app.get('/api/tax-docs', (req, res) => {
-  res.json(taxDocs);
-});
-
-app.get('/api/payroll', (req, res) => {
-  res.json(payroll);
-});
+app.get('/api/tax-docs', (req, res) => res.json(taxDocs));
+app.get('/api/payroll', (req, res) => res.json(payroll));
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port http://localhost:${PORT}`);
+  console.log(`🚀 JRKC HR Portal REST API Backend listening on http://localhost:${PORT}`);
 });

@@ -7,10 +7,11 @@ export async function connectDB() {
     const mongoUri = process.env.MONGODB_URI || defaultUri;
 
     console.log(`Connecting to MongoDB (${env} environment)...`);
-    const conn = await mongoose.connect(mongoUri);
+    const conn = await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 2000 // 2s timeout for local development fallback
+    });
     console.log(`MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
   } catch (error) {
-    console.error(`Error connecting to MongoDB: ${error.message}`);
-    // Non-fatal fallback for local testing if mongo daemon isn't running locally yet
+    console.log(`MongoDB connection not active (${error.message}). Operating in-memory fallback mode.`);
   }
 }

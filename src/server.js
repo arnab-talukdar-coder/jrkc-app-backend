@@ -140,6 +140,30 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Reset Database Endpoint (Wipes test candidates/approvals and seeds arnab@yopmail.com & hr@yopmail.com)
+app.post('/api/admin/reset-database', async (req, res) => {
+  memEmployees = [...INITIAL_EMPLOYEES];
+  memRegistrationRequests = [];
+  memApprovals = [];
+  memNotifications = [];
+  memPayslips = [];
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Employee.deleteMany({});
+      await Employee.insertMany(INITIAL_EMPLOYEES);
+      await RegistrationRequest.deleteMany({});
+      await Approval.deleteMany({});
+      await Notification.deleteMany({});
+      await Payslip.deleteMany({});
+    }
+  } catch (e) {}
+
+  res.json({
+    message: 'Database reset cleanly. Active accounts: arnab@yopmail.com (Admin) and hr@yopmail.com (HR).'
+  });
+});
+
 // Helper: Push Notification
 async function createNotification(notif) {
   const newNotif = {

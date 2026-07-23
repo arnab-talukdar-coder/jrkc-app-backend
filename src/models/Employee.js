@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const LogSchema = new mongoose.Schema({
   date: String,
@@ -15,13 +16,14 @@ const EmployeeSchema = new mongoose.Schema({
   department: { type: String, required: true },
   avatar: String,
   status: { type: String, default: 'Clocked Out' },
-  accountStatus: { type: String, enum: ['pending_approval', 'approved', 'rejected'], default: 'approved' },
+  accountStatus: { type: String, enum: ['pending_approval', 'approved', 'rejected'], default: 'pending_approval' },
+  password: { type: String, default: null }, // set after approval
   clockTime: String,
   returnsDate: String,
   ptoDays: { type: Number, default: 15 },
   sickDays: { type: Number, default: 5 },
   lwpDaysTaken: { type: Number, default: 0 },
-  email: String,
+  email: { type: String, required: true, unique: true },
   phone: String,
   dateOfBirth: String,
   reportingManager: String,
@@ -34,5 +36,19 @@ const EmployeeSchema = new mongoose.Schema({
   taxDeductions: { type: Number, default: 2000 },
   recentLogs: [LogSchema]
 }, { timestamps: true });
+
+// Hash password before saving
+EmployeeSchema.pre('save', async function (next) {
+  if (this.isModified('password') && this.password) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
+});
+
+// Compare password
+EmployeeSchema.methods.comparePassword = async function (candidate) {
+  if (!this.password) return false;
+  return bcrypt.compare(candidate, this.password);
+};
 
 export const Employee = mongoose.model('Employee', EmployeeSchema);

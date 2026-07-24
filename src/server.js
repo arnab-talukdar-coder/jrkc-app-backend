@@ -1011,9 +1011,9 @@ app.patch('/api/approvals/:id', async (req, res) => {
     if (item.isLwp || item.type.includes('LWP')) {
       emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + item.totalDays;
     } else if (item.type.includes('Annual') || item.type.includes('PTO')) {
-      emp.ptoDays = Math.max(0, (emp.ptoDays || 15) - item.totalDays);
+      emp.ptoDaysTaken = (emp.ptoDaysTaken || 0) + item.totalDays;
     } else if (item.type.includes('Sick')) {
-      emp.sickDays = Math.max(0, (emp.sickDays || 5) - item.totalDays);
+      emp.sickDaysTaken = (emp.sickDaysTaken || 0) + item.totalDays;
     }
   }
 
@@ -1022,8 +1022,8 @@ app.patch('/api/approvals/:id', async (req, res) => {
       await Approval.findOneAndUpdate({ id }, { status });
       if (status === 'approved' && emp) {
         await Employee.findOneAndUpdate(
-          { id: emp.id },
-          { lwpDaysTaken: emp.lwpDaysTaken, ptoDays: emp.ptoDays, sickDays: emp.sickDays }
+          { $or: [{ id: emp.id }, { email: emp.email }] },
+          { lwpDaysTaken: emp.lwpDaysTaken, ptoDaysTaken: emp.ptoDaysTaken, sickDaysTaken: emp.sickDaysTaken }
         );
       }
     }

@@ -689,6 +689,131 @@ app.post('/api/employees', async (req, res) => {
   res.status(201).json(newEmp);
 });
 
+// ----------------------------------------------------
+// ATTENDANCE & TIMESHEET ENDPOINTS
+// ----------------------------------------------------
+
+// Clock In Endpoint
+app.post('/api/attendance/clock-in', async (req, res) => {
+  const { employeeId, email } = req.body;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  const logEntry = {
+    id: `ATT-${Math.floor(1000 + Math.random() * 9000)}`,
+    type: 'clock_punch',
+    date: dateStr,
+    clockInTime: timeStr,
+    clockOutTime: null,
+    hours: `${timeStr} - Present`,
+    duration: 'Active Session',
+    status: 'Active',
+    createdAt: now.toISOString()
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const emp = await Employee.findOneAndUpdate(
+        { $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] },
+        {
+          $set: { status: 'Clocked In' },
+          $push: { recentLogs: { $each: [logEntry], $position: 0 } }
+        },
+        { new: true }
+      );
+      if (emp) return res.json({ message: 'Clocked in successfully', employee: emp, log: logEntry });
+    }
+  } catch (e) {}
+
+  let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
+  if (emp) {
+    emp.status = 'Clocked In';
+    if (!emp.recentLogs) emp.recentLogs = [];
+    emp.recentLogs.unshift(logEntry);
+    return res.json({ message: 'Clocked in successfully', employee: emp, log: logEntry });
+  }
+
+  res.status(404).json({ error: 'Employee not found' });
+});
+
+// Clock Out Endpoint
+app.post('/api/attendance/clock-out', async (req, res) => {
+  const { employeeId, email } = req.body;
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] });
+      if (emp) {
+        emp.status = 'Clocked Out';
+        if (emp.recentLogs && emp.recentLogs.length > 0 && emp.recentLogs[0].status === 'Active') {
+          emp.recentLogs[0].clockOutTime = timeStr;
+          emp.recentLogs[0].hours = `${emp.recentLogs[0].clockInTime || '09:00 AM'} - ${timeStr}`;
+          emp.recentLogs[0].duration = 'Completed Shift';
+          emp.recentLogs[0].status = 'Completed';
+        }
+        await emp.save();
+        return res.json({ message: 'Clocked out successfully', employee: emp });
+      }
+    }
+  } catch (e) {}
+
+  let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
+  if (emp) {
+    emp.status = 'Clocked Out';
+    if (emp.recentLogs && emp.recentLogs.length > 0 && emp.recentLogs[0].status === 'Active') {
+      emp.recentLogs[0].clockOutTime = timeStr;
+      emp.recentLogs[0].hours = `${emp.recentLogs[0].clockInTime || '09:00 AM'} - ${timeStr}`;
+      emp.recentLogs[0].duration = 'Completed Shift';
+      emp.recentLogs[0].status = 'Completed';
+    }
+    return res.json({ message: 'Clocked out successfully', employee: emp });
+  }
+
+  res.status(404).json({ error: 'Employee not found' });
+});
+
+// Submit Manual Project Timesheet Entry
+app.post('/api/attendance/timesheet-entry', async (req, res) => {
+  const { employeeId, email, projectName, hours, notes, date } = req.body;
+  const now = new Date();
+  const dateStr = date || now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+
+  const projectEntry = {
+    id: `TS-${Math.floor(1000 + Math.random() * 9000)}`,
+    type: 'project_log',
+    date: dateStr,
+    projectName: projectName || 'General Work',
+    hours: hours || '4.0 hrs',
+    notes: notes || 'Daily work log',
+    duration: hours || '4.0 hrs',
+    status: 'Submitted',
+    createdAt: now.toISOString()
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const emp = await Employee.findOneAndUpdate(
+        { $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] },
+        { $push: { recentLogs: { $each: [projectEntry], $position: 0 } } },
+        { new: true }
+      );
+      if (emp) return res.status(201).json({ message: 'Timesheet log saved successfully', log: projectEntry });
+    }
+  } catch (e) {}
+
+  let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
+  if (emp) {
+    if (!emp.recentLogs) emp.recentLogs = [];
+    emp.recentLogs.unshift(projectEntry);
+    return res.status(201).json({ message: 'Timesheet log saved successfully', log: projectEntry });
+  }
+
+  res.status(404).json({ error: 'Employee not found' });
+});
+
 // HR changes yearly leave quota for employee
 app.put('/api/hr/employees/:id/leave-quota', async (req, res) => {
   const { id } = req.params;

@@ -35,7 +35,12 @@ server {
 # -------------------------------------------------------------
 server {
     listen 80;
+    listen 443 ssl;
     server_name api-test.jrkcrail.com;
+
+    # SSL certificates (managed by Certbot)
+    ssl_certificate /etc/letsencrypt/live/api-test.jrkcrail.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api-test.jrkcrail.com/privkey.pem;
 
     location / {
         add_header 'Access-Control-Allow-Origin' '$http_origin' always;

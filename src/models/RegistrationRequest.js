@@ -8,6 +8,7 @@ const RegistrationRequestSchema = new mongoose.Schema({
   department: { type: String, required: true },
   role: { type: String, required: true },
   requestedUserRole: { type: String, enum: ['Admin', 'HR', 'Employee'], default: 'Employee' },
+  password: String,
   assignedHrId: String,
   assignedHrName: String,
   status: { type: String, enum: ['pending_approval', 'approved', 'rejected'], default: 'pending_approval' },

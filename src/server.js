@@ -183,20 +183,26 @@ async function createNotification(notif) {
 
 // Submit registration request (Candidate/Employee 1st time)
 app.post('/api/auth/register', async (req, res) => {
-  const { name, email, phone, department, role, requestedUserRole, assignedHrId, assignedHrName } = req.body;
+  const { name, email, phone, department, role, requestedUserRole, password, assignedHrId, assignedHrName } = req.body;
 
   if (!name || !email || !department) {
     return res.status(400).json({ error: 'Name, email, and department are required' });
   }
 
+  let hashedPassword = null;
+  if (password) {
+    hashedPassword = await bcrypt.hash(password, 10);
+  }
+
   const newReg = {
     id: `REG-${Math.floor(100 + Math.random() * 900)}`,
     name,
-    email,
+    email: email.toLowerCase().trim(),
     phone: phone || '',
     department,
     role: role || 'Employee',
     requestedUserRole: requestedUserRole || 'Employee',
+    password: hashedPassword,
     assignedHrId: assignedHrId || 'HR-0010',
     assignedHrName: assignedHrName || 'Sarah Chen',
     status: 'pending_approval',
@@ -605,6 +611,50 @@ app.get('/api/employees', async (req, res) => {
     result = result.filter(e => e.name.toLowerCase().includes(q) || e.role.toLowerCase().includes(q) || e.email.toLowerCase().includes(q));
   }
   res.json(result);
+});
+
+// Admin / HR Onboards New Employee Directly
+app.post('/api/employees', async (req, res) => {
+  const { name, email, phone, department, role, userRole, password, joiningDate, dateOfBirth } = req.body;
+
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Name and email are required for onboarding' });
+  }
+
+  const plainPassword = password || 'Employee@123';
+  const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+  const newEmp = {
+    id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
+    name,
+    email: email.toLowerCase().trim(),
+    phone: phone || '',
+    department: department || 'General',
+    role: role || 'Employee',
+    userRole: userRole || 'Employee',
+    status: 'Clocked Out',
+    accountStatus: 'approved',
+    password: hashedPassword,
+    ptoDays: 15,
+    sickDays: 5,
+    lwpDaysTaken: 0,
+    joiningDate: joiningDate || new Date().toLocaleDateString('en-IN'),
+    dateOfBirth: dateOfBirth || 'Jan 01, 1995',
+    baseSalary: 60000,
+    allowances: 5000,
+    taxDeductions: 3000,
+    recentLogs: [],
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Employee.create(newEmp);
+    }
+  } catch (e) {}
+
+  memEmployees.unshift(newEmp);
+  res.status(201).json(newEmp);
 });
 
 // HR changes yearly leave quota for employee

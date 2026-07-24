@@ -34,24 +34,15 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    'http://localhost:8081',
-    'http://localhost:8082',
-    'http://localhost:8080',
-    'http://localhost:19006',
-    'http://127.0.0.1:8081',
-    'http://127.0.0.1:8082'
-  ];
-
-  if (origin && (allowedOrigins.includes(origin) || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
   } else {
     res.header('Access-Control-Allow-Origin', '*');
   }
 
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -59,12 +50,15 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors({
-  origin: '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-}));
 app.use(express.json());
+
+// Normalization middleware: Ensures routes match whether Nginx forwards /api prefix or strips it
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api') && req.url !== '/' && req.url !== '/health') {
+    req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
+  }
+  next();
+});
 
 // In-memory fallback stores
 let memEmployees = [...INITIAL_EMPLOYEES];
@@ -129,8 +123,8 @@ async function initDatabase() {
 
 initDatabase();
 
-// Health Check Endpoint
-app.get('/api/health', (req, res) => {
+// Health & Root Check Endpoints
+app.get(['/', '/health', '/api', '/api/health'], (req, res) => {
   res.json({
     status: 'ok',
     message: 'JRKC HR Portal REST API Backend is running',

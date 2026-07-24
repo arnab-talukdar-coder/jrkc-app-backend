@@ -276,10 +276,38 @@ app.post('/api/auth/login', async (req, res) => {
     }
   }
 
-  // Fallback for default seeded accounts
+  // Fallback for default seeded accounts or registration request auto-sync
   if (!passwordMatch) {
     if (user.email === 'arnab@yopmail.com' && password === 'Admin@123') passwordMatch = true;
     if (user.email === 'hr@yopmail.com' && password === 'Hrm@123') passwordMatch = true;
+
+    // Check if candidate registered with a password in RegistrationRequest
+    if (!passwordMatch) {
+      let regReq = null;
+      try {
+        if (mongoose.connection.readyState === 1) {
+          regReq = await RegistrationRequest.findOne({ email: user.email.toLowerCase().trim() });
+        }
+      } catch (e) {}
+      if (!regReq) regReq = memRegistrationRequests.find(r => r.email && r.email.toLowerCase() === user.email.toLowerCase().trim());
+
+      if (regReq && regReq.password) {
+        if (regReq.password.startsWith('$2b$') || regReq.password.startsWith('$2a$')) {
+          passwordMatch = await bcrypt.compare(password, regReq.password);
+        } else {
+          passwordMatch = (regReq.password === password);
+        }
+
+        if (passwordMatch) {
+          user.password = regReq.password;
+          try {
+            if (mongoose.connection.readyState === 1) {
+              await Employee.findOneAndUpdate({ email: user.email.toLowerCase().trim() }, { password: regReq.password });
+            }
+          } catch (e) {}
+        }
+      }
+    }
   }
 
   if (!passwordMatch) {
@@ -480,20 +508,24 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     hrObj = { id: 'HR-0010', name: 'Sarah Chen', email: 'sarah.chen@jrkc.com' };
   }
 
-  const tempPassword = Math.random().toString(36).slice(-8).toUpperCase() + Math.floor(10 + Math.random() * 90);
-  const hashedTempPassword = await bcrypt.hash(tempPassword, 10);
+  // Use candidate's created password if present; otherwise generate a random temp password
+  let userPassword = regItem.password;
+  if (!userPassword) {
+    const tempPassword = Math.random().toString(36).slice(-8).toUpperCase() + Math.floor(10 + Math.random() * 90);
+    userPassword = await bcrypt.hash(tempPassword, 10);
+  }
 
   const newEmp = {
     id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
     name: regItem.name,
-    email: regItem.email,
+    email: regItem.email.toLowerCase().trim(),
     phone: regItem.phone,
     department: regItem.department,
     role: regItem.role,
     userRole: regItem.requestedUserRole || 'Employee',
     status: 'Clocked Out',
     accountStatus: 'approved',
-    password: hashedTempPassword,
+    password: userPassword,
     ptoDays: 15,
     sickDays: 5,
     lwpDaysTaken: 0,

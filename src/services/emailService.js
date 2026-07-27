@@ -283,3 +283,67 @@ export async function sendPayslipEmail(payslip, hrEmail) {
     html
   });
 }
+
+/**
+ * Send Delayed Disbursed Payslip Email (4-5 hours after HR marks as Paid)
+ */
+export async function sendDelayedPayslipDisbursementEmail(payslip) {
+  const mailer = await getTransporter();
+  const subject = `💳 Official Monthly Payslip Statement - ${payslip.payPeriod} | JRKC Rail Infra`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; border: 1px solid #cbd5e1; border-radius: 12px; background-color: #ffffff;">
+      <div style="background: linear-gradient(135deg, #047857 0%, #065f46 100%); padding: 20px; border-radius: 8px 8px 0 0; color: #ffffff; text-align: center;">
+        <h2 style="margin: 0; font-size: 20px; text-transform: uppercase;">JRKC Rail Infra Private Limited</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #a7f3d0;">Official Monthly Salary Statement & Disbursement Advice</p>
+      </div>
+
+      <div style="padding: 20px;">
+        <div style="background-color: #f0fdf4; border-left: 4px solid #047857; padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+          <h3 style="margin: 0; color: #047857; font-size: 16px;">Salary Disbursed & Verified</h3>
+          <p style="margin: 4px 0 0 0; color: #334155; font-size: 13px;">
+            Dear <strong>${payslip.employeeName}</strong>, your salary for <strong>${payslip.payPeriod}</strong> has been successfully processed and transferred to your bank account by HR.
+          </p>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 0; color: #64748b; font-weight: bold;">EMPLOYEE ID:</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #047857;">${payslip.employeeId}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 0; color: #64748b; font-weight: bold;">PAY PERIOD:</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold;">${payslip.payPeriod}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 0; color: #64748b; font-weight: bold;">TOTAL CTC (GROSS):</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #16a34a;">₹${(payslip.totalCtc || payslip.grossSalary || 0).toLocaleString('en-IN')}.00</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 0; color: #64748b; font-weight: bold;">TOTAL DEDUCTIONS:</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #dc2626;">-₹${(payslip.totalDeductions || 0).toLocaleString('en-IN')}.00</td>
+          </tr>
+          <tr style="background-color: #f8fafc; font-size: 16px; font-weight: bold;">
+            <td style="padding: 12px 8px; color: #0f172a;">NET SALARY DISBURSED:</td>
+            <td style="padding: 12px 8px; text-align: right; color: #047857; font-size: 18px;">₹${(payslip.netPay || 0).toLocaleString('en-IN')}.00</td>
+          </tr>
+        </table>
+
+        <div style="background-color: #f8fafc; padding: 12px; text-align: center; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; color: #334155;">
+          <strong>Amount in Words:</strong> <i>${payslip.amountInWords || 'Rupees Verified'}</i>
+        </div>
+
+        <p style="font-size: 12px; color: #64748b; margin-top: 20px; text-align: center;">
+          You can view and download your full printable PDF salary statement directly inside your JRKC HR Mobile / Web Portal under the Payroll tab.
+        </p>
+      </div>
+    </div>
+  `;
+
+  return mailer.sendMail({
+    from: SENDER,
+    to: payslip.employeeEmail,
+    subject,
+    text: `Salary Disbursed for ${payslip.payPeriod}. Net Salary: ₹${payslip.netPay}.`,
+    html
+  });
+}

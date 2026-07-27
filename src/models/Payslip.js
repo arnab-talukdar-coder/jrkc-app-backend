@@ -32,7 +32,11 @@ const PayslipSchema = new mongoose.Schema({
   grossSalary: { type: Number, required: true },
   netPay: { type: Number, required: true },
   amountInWords: String,
-  emailStatus: { type: String, enum: ['pending', 'sent', 'failed'], default: 'pending' },
+  disbursementStatus: { type: String, enum: ['pending_disbursement', 'paid_pending_dispatch', 'dispatched'], default: 'pending_disbursement' },
+  markedPaidAt: Date,
+  scheduledDispatchTime: Date,
+  dispatchedAt: Date,
+  emailStatus: { type: String, enum: ['pending', 'scheduled', 'sent', 'failed'], default: 'pending' },
   sentAt: Date
 }, { timestamps: true });
 

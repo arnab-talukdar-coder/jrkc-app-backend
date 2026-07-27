@@ -18,7 +18,8 @@ import {
   sendEmployeeApprovalEmail,
   sendLeaveRequestAlert,
   sendLeaveStatusNotification,
-  sendPayslipEmail
+  sendPayslipEmail,
+  sendDelayedPayslipDisbursementEmail
 } from './services/emailService.js';
 import {
   INITIAL_EMPLOYEES,
@@ -1552,6 +1553,147 @@ app.post('/api/payslips/generate', async (req, res) => {
 
   res.json({ message: 'Payslip generated successfully', payslip: newSlip });
 });
+
+// POST /api/payslips/:id/mark-paid
+// HR Marks Salary as Paid to Employee. Schedules PDF Email Dispatch after 4.5 hours delay!
+app.post('/api/payslips/:id/mark-paid', async (req, res) => {
+  const { id } = req.params;
+  const { delayHours = 4.5, immediate = false } = req.body;
+
+  const now = new Date();
+  const delayMs = immediate ? 0 : (Number(delayHours) || 4.5) * 3600 * 1000;
+  const scheduledTime = new Date(now.getTime() + delayMs);
+
+  let updatedPayslip = null;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      updatedPayslip = await Payslip.findOneAndUpdate(
+        { $or: [{ id }, { _id: mongoose.Types.ObjectId.isValid(id) ? id : null }] },
+        {
+          disbursementStatus: immediate ? 'dispatched' : 'paid_pending_dispatch',
+          markedPaidAt: now,
+          scheduledDispatchTime: scheduledTime,
+          emailStatus: immediate ? 'sent' : 'scheduled',
+          sentAt: immediate ? now : null
+        },
+        { new: true }
+      );
+    }
+  } catch (e) {}
+
+  if (!updatedPayslip) {
+    const slip = memPayslips.find(p => p.id === id || p._id === id);
+    if (slip) {
+      slip.disbursementStatus = immediate ? 'dispatched' : 'paid_pending_dispatch';
+      slip.markedPaidAt = now;
+      slip.scheduledDispatchTime = scheduledTime;
+      slip.emailStatus = immediate ? 'sent' : 'scheduled';
+      if (immediate) slip.sentAt = now;
+      updatedPayslip = slip;
+    }
+  }
+
+  if (!updatedPayslip) {
+    return res.status(404).json({ error: 'Payslip record not found' });
+  }
+
+  // Create HR Notification
+  const hrNotif = {
+    id: `NOTIF-${Date.now()}`,
+    title: 'Salary Disbursement Marked as Paid 💳',
+    message: immediate
+      ? `Salary payment for ${updatedPayslip.employeeName} (${updatedPayslip.payPeriod}) marked as paid and payslip emailed immediately.`
+      : `Salary payment for ${updatedPayslip.employeeName} (${updatedPayslip.payPeriod}) marked as paid. Payslip PDF will automatically be emailed in ${delayHours} hours.`,
+    targetRole: 'HR',
+    recipientEmail: updatedPayslip.assignedHrEmail || 'hr@jrkc.com',
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+  memNotifications.unshift(hrNotif);
+
+  if (immediate) {
+    sendDelayedPayslipDisbursementEmail(updatedPayslip).catch(e => console.error('Error emailing payslip:', e));
+  }
+
+  res.json({
+    message: immediate
+      ? 'Salary marked as paid and payslip dispatched immediately.'
+      : `Salary marked as paid. Payslip email scheduled for automatic dispatch in ${delayHours} hours.`,
+    payslip: updatedPayslip
+  });
+});
+
+// Automatic Delayed Dispatch Worker (Runs every 1 minute)
+// Automatically dispatches payslip emails when scheduledDispatchTime elapses!
+setInterval(async () => {
+  try {
+    const now = new Date();
+    
+    // Check MongoDB if connected
+    if (mongoose.connection.readyState === 1) {
+      const pendingMongoSlips = await Payslip.find({
+        disbursementStatus: 'paid_pending_dispatch',
+        scheduledDispatchTime: { $lte: now }
+      });
+
+      for (const slip of pendingMongoSlips) {
+        slip.disbursementStatus = 'dispatched';
+        slip.emailStatus = 'sent';
+        slip.dispatchedAt = now;
+        slip.sentAt = now;
+        await slip.save();
+
+        // Dispatch Email
+        sendDelayedPayslipDisbursementEmail(slip).catch(err => console.error('Delayed email dispatch error:', err));
+
+        // Create Employee In-App Notification
+        const empNotif = {
+          id: `NOTIF-${Date.now()}`,
+          title: 'Monthly Salary Statement Disbursed 📑',
+          message: `Your official salary statement for ${slip.payPeriod} has been verified and emailed to ${slip.employeeEmail}.`,
+          targetRole: 'Employee',
+          recipientEmail: slip.employeeEmail,
+          recipientId: slip.employeeId,
+          createdAt: now.toISOString(),
+          read: false
+        };
+        try { await Notification.create(empNotif); } catch(e){}
+        memNotifications.unshift(empNotif);
+      }
+    }
+
+    // Check Memory Store
+    const pendingMemSlips = memPayslips.filter(p =>
+      p.disbursementStatus === 'paid_pending_dispatch' &&
+      p.scheduledDispatchTime &&
+      new Date(p.scheduledDispatchTime) <= now
+    );
+
+    for (const slip of pendingMemSlips) {
+      slip.disbursementStatus = 'dispatched';
+      slip.emailStatus = 'sent';
+      slip.dispatchedAt = now;
+      slip.sentAt = now;
+
+      sendDelayedPayslipDisbursementEmail(slip).catch(err => console.error('Delayed email dispatch error:', err));
+
+      const empNotif = {
+        id: `NOTIF-${Date.now()}`,
+        title: 'Monthly Salary Statement Disbursed 📑',
+        message: `Your official salary statement for ${slip.payPeriod} has been verified and emailed to ${slip.employeeEmail}.`,
+        targetRole: 'Employee',
+        recipientEmail: slip.employeeEmail,
+        recipientId: slip.employeeId,
+        createdAt: now.toISOString(),
+        read: false
+      };
+      memNotifications.unshift(empNotif);
+    }
+  } catch (e) {
+    console.error('Error in delayed payslip worker:', e);
+  }
+}, 60 * 1000);
 
 app.listen(PORT, () => {
   console.log(`🚀 JRKC HR Portal REST API Backend listening on http://localhost:${PORT}`);

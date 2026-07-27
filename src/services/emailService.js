@@ -73,19 +73,45 @@ export async function sendAdminRegistrationAlert(requestDetails) {
 /**
  * 2. Send Welcome & Approval Email to Employee and Assigned HR
  */
-export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail) {
+export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail, generatedPassword) {
   const mailer = await getTransporter();
-  const subject = `Welcome to JRKC! Your Account Has Been Approved`;
+  const passToDisplay = generatedPassword || employeeDetails.tempPassword || 'JRKC#849201';
+  const subject = `Welcome to JRKC Rail Infra! Account Approved & Credentials Inside`;
+
   const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px; border: 1px solid #10b981; border-radius: 8px;">
-      <h2 style="color: #059669;">Congratulations ${employeeDetails.name}! 🎉</h2>
-      <p>Your registration request has been approved by the Admin/Director.</p>
-      <p>You can now log into the JRKC HR Portal using your email: <strong>${employeeDetails.email}</strong></p>
-      <div style="background-color: #f3f4f6; padding: 15px; border-radius: 6px; margin: 15px 0;">
-        <p style="margin: 0; font-weight: bold;">Your Assigned HR Manager:</p>
-        <p style="margin: 5px 0 0 0;">${employeeDetails.assignedHrName || 'HR Team'} (${employeeDetails.assignedHrEmail || 'hr@jrkc.com'})</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 22px; border: 1px solid #10b981; border-radius: 10px; background-color: #ffffff;">
+      <div style="border-bottom: 2px solid #059669; padding-bottom: 12px; margin-bottom: 16px;">
+        <h2 style="color: #059669; margin: 0;">Welcome to JRKC Rail Infra Private Limited! 🎉</h2>
       </div>
-      <p>Welcome aboard!</p>
+
+      <p style="color: #334155; font-size: 14px; line-height: 1.5;">
+        Hello <strong>${employeeDetails.name}</strong>,<br>
+        Your registration request has been <strong>APPROVED</strong> by the Director & Management. Your employee portal account is now active.
+      </p>
+
+      <!-- Credentials Card -->
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 18px; border-radius: 8px; margin: 20px 0;">
+        <h4 style="color: #15803d; margin: 0 0 10px 0; font-size: 15px;">🔑 Your System Access Credentials:</h4>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13.5px;"><strong>Employee ID:</strong> ${employeeDetails.idCardNo || employeeDetails.id || 'EMP-1001'}</p>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13.5px;"><strong>Login Email:</strong> ${employeeDetails.email}</p>
+        <p style="margin: 8px 0 4px 0; color: #1e293b; font-size: 13.5px;">
+          <strong>System Generated Password:</strong> 
+          <span style="font-family: monospace; font-size: 15px; font-weight: bold; color: #4f46e5; background: #e0e7ff; padding: 4px 10px; border-radius: 4px; border: 1px solid #c7d2fe;">${passToDisplay}</span>
+        </p>
+        <p style="color: #4d7c0f; font-size: 12px; margin-top: 10px; font-style: italic;">
+          🔒 Security Notice: Please log in using the credentials above and update your password after your first sign-in.
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; margin: 15px 0;">
+        <p style="margin: 0; font-weight: bold; color: #475569; font-size: 13px;">Assigned HR Manager:</p>
+        <p style="margin: 4px 0 0 0; color: #334155; font-size: 13px;">${employeeDetails.assignedHrName || 'HR Department'} (${employeeDetails.assignedHrEmail || 'hr@jrkcrail.com'})</p>
+      </div>
+
+      <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+        JRKC Rail Infra Private Limited • CIN-U30204UP2023PTC187418<br>
+        “Smart Rail Infra, Stronger Nation.”
+      </div>
     </div>
   `;
 
@@ -94,7 +120,7 @@ export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail
     from: SENDER,
     to: employeeDetails.email,
     subject,
-    text: `Your JRKC HR Portal registration has been approved. You can now log in using ${employeeDetails.email}.`,
+    text: `Welcome ${employeeDetails.name}! Your account is approved. Login Email: ${employeeDetails.email}, System-Generated Password: ${passToDisplay}.`,
     html
   });
 

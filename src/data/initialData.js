@@ -9,8 +9,9 @@ export const INITIAL_EMPLOYEES = [
     status: 'Clocked In',
     accountStatus: 'approved',
     password: '$2b$10$rn5DvpB80PE1pnff6DrxsOf9Uh.ZKPone7mS6nTxdiGljd983Qe36', // Admin@123
-    ptoDays: 30,
+    ptoDays: 18,
     sickDays: 10,
+    casualDays: 10,
     lwpDaysTaken: 0,
     email: 'arnab@yopmail.com',
     phone: '+91 98765 00001',
@@ -32,8 +33,9 @@ export const INITIAL_EMPLOYEES = [
     status: 'Clocked In',
     accountStatus: 'approved',
     password: '$2b$10$yhIldDJHpRly46Xon5V3GOkVNYaMUbMu3cjltQx/Di4hEZGk/MVqe', // Hrm@123
-    ptoDays: 20,
-    sickDays: 8,
+    ptoDays: 18,
+    sickDays: 10,
+    casualDays: 10,
     lwpDaysTaken: 0,
     email: 'hr@yopmail.com',
     phone: '+91 98765 00002',
@@ -56,9 +58,45 @@ export const INITIAL_ANNOUNCEMENTS = [
     id: 'ANN-001',
     type: 'Announcement',
     time: 'Just now',
-    title: 'Welcome to JRKC HR Portal',
-    summary: 'JRKC Rail Coach Factory HR Management Portal initialized and ready for operation.',
-    image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80'
+    title: 'Financial Discipline & Prevention of Irregularities Notice',
+    message: 'All employees are instructed to maintain complete transparency and accuracy in financial transactions, record-keeping, and operational procedures.',
+    author: 'Management / HR'
+  }
+];
+
+export const INITIAL_PAYSLIPS = [
+  {
+    id: 'PAY-27644',
+    serialNo: '27644',
+    employeeId: 'JRKCRIPL/004',
+    employeeName: 'SACHIN SHARMA',
+    employeeEmail: 'sachin.sharma@jrkcrail.com',
+    role: 'SITE ENGINEER',
+    department: 'Engineering & Construction',
+    payPeriod: 'May-26',
+    payDate: 'May 31, 2026',
+    workingDaysInMonth: 30,
+    attendance: 30,
+    station: 'KARAMBELI',
+    baseSalary: 14000,
+    basic: 14000,
+    salaryOfAttendance: 14000,
+    employerPf: 1680,
+    hra: 5600,
+    da: 3350,
+    sa: 6420,
+    totalCtc: 31050,
+    esi: 0,
+    advance: 0,
+    incomeTax: 0,
+    loan: 0,
+    employeePf: 1680,
+    other: 0,
+    totalDeductions: 3360,
+    grossSalary: 31050,
+    netPay: 27690,
+    amountInWords: 'Rupees TwentySeven Thousand Six Hundred Ninety Only',
+    emailStatus: 'sent'
   }
 ];
 

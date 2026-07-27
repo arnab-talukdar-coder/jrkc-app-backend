@@ -27,7 +27,8 @@ import {
   INITIAL_BANK_DETAILS,
   INITIAL_TAX_DOCS,
   INITIAL_PAYROLL,
-  INITIAL_REGISTRATION_REQUESTS
+  INITIAL_REGISTRATION_REQUESTS,
+  INITIAL_PAYSLIPS
 } from './data/initialData.js';
 
 const app = express();
@@ -66,7 +67,7 @@ let memApprovals = [...INITIAL_APPROVALS];
 let memAnnouncements = [...INITIAL_ANNOUNCEMENTS];
 let memBankDetails = { ...INITIAL_BANK_DETAILS };
 let memRegistrationRequests = [...INITIAL_REGISTRATION_REQUESTS];
-let memPayslips = [];
+let memPayslips = [...INITIAL_PAYSLIPS];
 let memNotifications = [
   {
     id: 'NOTIF-01',
@@ -206,6 +207,8 @@ app.post('/api/auth/register', async (req, res) => {
     assignedHrId: assignedHrId || 'HR-0010',
     assignedHrName: assignedHrName || 'Sarah Chen',
     status: 'pending_approval',
+    agreedToTerms: true,
+    termsAcceptedAt: new Date().toISOString(),
     dateSubmitted: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
   };
 
@@ -508,12 +511,9 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     hrObj = { id: 'HR-0010', name: 'Sarah Chen', email: 'sarah.chen@jrkc.com' };
   }
 
-  // Use candidate's created password if present; otherwise generate a random temp password
-  let userPassword = regItem.password;
-  if (!userPassword) {
-    const tempPassword = Math.random().toString(36).slice(-8).toUpperCase() + Math.floor(10 + Math.random() * 90);
-    userPassword = await bcrypt.hash(tempPassword, 10);
-  }
+  // Always generate a secure system password for the approved employee
+  const tempPassword = 'JRKC#' + Math.floor(100000 + Math.random() * 900000);
+  const userPassword = await bcrypt.hash(tempPassword, 10);
 
   const newEmp = {
     id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -526,8 +526,9 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     status: 'Clocked Out',
     accountStatus: 'approved',
     password: userPassword,
-    ptoDays: 15,
-    sickDays: 5,
+    ptoDays: 18, // EL (Earned Leave)
+    sickDays: 10, // SL (Sick Leave)
+    casualDays: 10, // CL (Casual Leave)
     lwpDaysTaken: 0,
     joiningDate: new Date().toLocaleDateString('en-IN'),
     assignedHrId: hrObj.id,
@@ -551,15 +552,15 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
   if (index !== -1) memRegistrationRequests[index].status = 'approved';
   memEmployees.unshift(newEmp);
 
-  // Trigger emails to Employee & Assigned HR (with temp password)
-  sendEmployeeApprovalEmail({ ...newEmp, tempPassword }, hrObj.email).catch(err => console.error('Welcome email error:', err));
+  // Trigger emails to Employee & Assigned HR (with system generated temp password)
+  sendEmployeeApprovalEmail(newEmp, hrObj.email, tempPassword).catch(err => console.error('Welcome email error:', err));
 
   // Notifications
   await createNotification({
     targetRole: 'Employee',
     recipientEmail: newEmp.email,
     title: 'Account Approved ✅',
-    message: `Your registration was approved. Temp password: ${tempPassword}. Please login and change your password immediately.`,
+    message: `Your registration was approved! Your system-generated password is: ${tempPassword}. Please log in and change your password immediately.`,
     type: 'registration'
   });
 
@@ -571,7 +572,7 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     type: 'registration'
   });
 
-  res.json({ message: 'Registration request approved', employee: newEmp });
+  res.json({ message: 'Registration request approved', employee: newEmp, tempPassword });
 });
 
 // Admin rejects registration request
@@ -667,11 +668,15 @@ app.post('/api/employees', async (req, res) => {
     status: 'Clocked Out',
     accountStatus: 'approved',
     password: hashedPassword,
-    ptoDays: 15,
-    sickDays: 5,
+    ptoDays: 18, // EL (Earned Leave)
+    sickDays: 10, // SL (Sick Leave)
+    casualDays: 10, // CL (Casual Leave)
     lwpDaysTaken: 0,
     joiningDate: joiningDate || new Date().toLocaleDateString('en-IN'),
     dateOfBirth: dateOfBirth || 'Jan 01, 1995',
+    dob: dateOfBirth || '01/01/1995',
+    idCardNo: `JRKCRIPL/${Math.floor(100 + Math.random() * 900)}`,
+    validity: 'March 2028',
     baseSalary: 60000,
     allowances: 5000,
     taxDeductions: 3000,
@@ -687,6 +692,62 @@ app.post('/api/employees', async (req, res) => {
 
   memEmployees.unshift(newEmp);
   res.status(201).json(newEmp);
+});
+
+// Submit Profile Photo Change Request for HR Approval
+app.post('/api/employees/photo-request', async (req, res) => {
+  const { employeeId, email, newAvatarUrl } = req.body;
+
+  let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
+  if (!emp && mongoose.connection.readyState === 1) {
+    try { emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] }); } catch (e) {}
+  }
+
+  if (!emp) {
+    return res.status(404).json({ error: 'Employee not found' });
+  }
+
+  emp.pendingAvatar = newAvatarUrl;
+  emp.photoStatus = 'pending';
+
+  const newApproval = {
+    id: `REQ-${Math.floor(100 + Math.random() * 900)}`,
+    employeeId: emp.id,
+    employeeName: emp.name,
+    role: emp.role,
+    avatar: emp.avatar,
+    newAvatarUrl,
+    type: 'Profile Picture Approval',
+    details: 'Profile Picture Change Request',
+    subDetails: newAvatarUrl,
+    assignedHrId: emp.assignedHrId || 'HR-0010',
+    assignedHrName: emp.assignedHrName || 'HR Manager',
+    assignedHrEmail: emp.assignedHrEmail || 'hr@yopmail.com',
+    status: 'pending_hr',
+    dateSubmitted: 'Just now'
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Employee.findOneAndUpdate(
+        { $or: [{ id: emp.id }, { email: emp.email }] },
+        { pendingAvatar: newAvatarUrl, photoStatus: 'pending' }
+      );
+      await Approval.create(newApproval);
+    }
+  } catch (e) {}
+
+  memApprovals.unshift(newApproval);
+
+  await createNotification({
+    targetRole: 'HR',
+    recipientId: emp.assignedHrId,
+    title: 'New Profile Photo Submission',
+    message: `${emp.name} uploaded a new profile picture. HR approval required.`,
+    type: 'leave_request'
+  });
+
+  res.status(201).json({ message: 'Photo submitted for HR approval', approval: newApproval, employee: emp });
 });
 
 // ----------------------------------------------------
@@ -919,7 +980,7 @@ app.post('/api/approvals', async (req, res) => {
     totalDays: daysCount,
     isLwp: isLwpLeave,
     lwpDays: isLwpLeave ? daysCount : 0,
-    status: 'pending',
+    status: 'pending_hr',
     dateSubmitted: 'Just now'
   };
 
@@ -930,14 +991,14 @@ app.post('/api/approvals', async (req, res) => {
       await createNotification({
         targetRole: 'HR',
         recipientId: assignedHrId,
-        title: 'New Leave Request',
-        message: `${newApproval.employeeName} requested ${newApproval.type} (${newApproval.totalDays} day(s)).`,
+        title: 'New Leave Request (Pending HR)',
+        message: `${newApproval.employeeName} requested ${newApproval.type} (${newApproval.totalDays} day(s)). HR review required.`,
         type: 'leave_request'
       });
       await createNotification({
         targetRole: 'Admin',
         title: 'Leave Request Submitted',
-        message: `${newApproval.employeeName} submitted a leave request to HR ${assignedHrName}.`,
+        message: `${newApproval.employeeName} submitted a leave request (assigned to HR ${assignedHrName}).`,
         type: 'leave_request'
       });
       return res.status(201).json(created);
@@ -949,21 +1010,21 @@ app.post('/api/approvals', async (req, res) => {
   await createNotification({
     targetRole: 'HR',
     recipientId: assignedHrId,
-    title: 'New Leave Request',
-    message: `${newApproval.employeeName} requested ${newApproval.type} (${newApproval.totalDays} day(s)).`,
+    title: 'New Leave Request (Pending HR)',
+    message: `${newApproval.employeeName} requested ${newApproval.type} (${newApproval.totalDays} day(s)). HR review required.`,
     type: 'leave_request'
   });
   await createNotification({
     targetRole: 'Admin',
     title: 'Leave Request Submitted',
-    message: `${newApproval.employeeName} submitted a leave request to HR ${assignedHrName}.`,
+    message: `${newApproval.employeeName} submitted a leave request (assigned to HR ${assignedHrName}).`,
     type: 'leave_request'
   });
 
   res.status(201).json(newApproval);
 });
 
-// HR lists approvals (filtered by assigned HR or status)
+// HR / Admin lists approvals (filtered by assigned HR or status)
 app.get('/api/approvals', async (req, res) => {
   const { hrId, status } = req.query;
 
@@ -983,10 +1044,10 @@ app.get('/api/approvals', async (req, res) => {
   res.json(list);
 });
 
-// HR Approves or Rejects Leave Request
+// HR & Admin Leave Approval Endpoint (Sequential 2-step approval: pending_hr -> pending_admin -> approved)
 app.patch('/api/approvals/:id', async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body; // 'approved' | 'rejected'
+  const { status, action, userRole, approverName } = req.body;
 
   let item = null;
   try {
@@ -1003,50 +1064,133 @@ app.patch('/api/approvals/:id', async (req, res) => {
     return res.status(404).json({ error: 'Approval request not found' });
   }
 
-  item.status = status;
+  let nextStatus = status;
 
-  // If approved and it is LWP or Paid Leave, update employee leave count
+  // Determine multi-stage status transition logic
+  if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
+    if (status === 'approved' || action === 'hr_approve' || action === 'admin_approve') {
+      nextStatus = 'approved';
+      item.hrApprovedBy = approverName || 'HR Manager';
+      item.hrApprovedAt = new Date().toISOString();
+    } else if (status === 'rejected') {
+      nextStatus = 'rejected';
+    }
+  } else if (action === 'hr_approve' || (status === 'pending_admin') || (status === 'approved' && (item.status === 'pending_hr' || item.status === 'pending') && userRole === 'HR')) {
+    nextStatus = 'pending_admin';
+    item.hrApprovedBy = approverName || 'HR Manager';
+    item.hrApprovedAt = new Date().toISOString();
+  } else if (action === 'admin_approve' || (status === 'approved' && item.status === 'pending_admin') || (status === 'approved' && userRole === 'Admin')) {
+    nextStatus = 'approved';
+    item.adminApprovedBy = approverName || 'Admin Director';
+    item.adminApprovedAt = new Date().toISOString();
+  } else if (status === 'rejected') {
+    nextStatus = 'rejected';
+  } else if (status === 'cancelled') {
+    nextStatus = 'cancelled';
+  }
+
+  item.status = nextStatus;
+
+  // Update employee leave balance or photo ONLY when approved
   let emp = memEmployees.find(e => e.id === item.employeeId || e.name === item.employeeName);
-  if (status === 'approved' && emp) {
-    if (item.isLwp || item.type.includes('LWP')) {
+
+  if (nextStatus === 'approved' && emp) {
+    if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
+      const photoToApply = item.newAvatarUrl || item.subDetails;
+      if (photoToApply) {
+        emp.avatar = photoToApply;
+        emp.pendingAvatar = null;
+        emp.photoStatus = 'approved';
+      }
+    } else if (item.isLwp || item.type.includes('LWP')) {
       emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + item.totalDays;
     } else if (item.type.includes('Annual') || item.type.includes('PTO')) {
       emp.ptoDaysTaken = (emp.ptoDaysTaken || 0) + item.totalDays;
     } else if (item.type.includes('Sick')) {
       emp.sickDaysTaken = (emp.sickDaysTaken || 0) + item.totalDays;
     }
+  } else if (nextStatus === 'rejected' && emp && (item.type === 'Profile Picture Approval' || item.type === 'Photo Change')) {
+    emp.pendingAvatar = null;
+    emp.photoStatus = 'rejected';
   }
 
   try {
     if (mongoose.connection.readyState === 1) {
-      await Approval.findOneAndUpdate({ id }, { status });
-      if (status === 'approved' && emp) {
+      await Approval.findOneAndUpdate(
+        { id },
+        {
+          status: nextStatus,
+          hrApprovedBy: item.hrApprovedBy,
+          hrApprovedAt: item.hrApprovedAt,
+          adminApprovedBy: item.adminApprovedBy,
+          adminApprovedAt: item.adminApprovedAt
+        }
+      );
+      if (nextStatus === 'approved' && emp) {
+        if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
+          const photoToApply = item.newAvatarUrl || item.subDetails;
+          await Employee.findOneAndUpdate(
+            { $or: [{ id: emp.id }, { email: emp.email }] },
+            { avatar: photoToApply, pendingAvatar: null, photoStatus: 'approved' }
+          );
+        } else {
+          await Employee.findOneAndUpdate(
+            { $or: [{ id: emp.id }, { email: emp.email }] },
+            { lwpDaysTaken: emp.lwpDaysTaken, ptoDaysTaken: emp.ptoDaysTaken, sickDaysTaken: emp.sickDaysTaken }
+          );
+        }
+      } else if (nextStatus === 'rejected' && emp && (item.type === 'Profile Picture Approval' || item.type === 'Photo Change')) {
         await Employee.findOneAndUpdate(
           { $or: [{ id: emp.id }, { email: emp.email }] },
-          { lwpDaysTaken: emp.lwpDaysTaken, ptoDaysTaken: emp.ptoDaysTaken, sickDaysTaken: emp.sickDaysTaken }
+          { pendingAvatar: null, photoStatus: 'rejected' }
         );
       }
     }
   } catch (e) {}
 
-  // Send Email & Notifications
+  // Notifications & Alerts
   const empEmail = emp ? emp.email : `${item.employeeName.toLowerCase().replace(' ', '.')}@luxehr.com`;
-  sendLeaveStatusNotification(item, empEmail).catch(err => console.error('Leave decision email error:', err));
 
-  await createNotification({
-    targetRole: 'Employee',
-    recipientEmail: empEmail,
-    title: `Leave Request ${status.toUpperCase()}`,
-    message: `Your leave request for ${item.type} (${item.totalDays} day(s)) has been ${status} by HR.`,
-    type: status === 'approved' ? 'leave_approval' : 'leave_rejection'
-  });
-
-  await createNotification({
-    targetRole: 'Admin',
-    title: `Leave Request Decision`,
-    message: `HR ${item.assignedHrName || ''} marked leave request for ${item.employeeName} as ${status}.`,
-    type: 'system'
-  });
+  if (nextStatus === 'pending_admin') {
+    await createNotification({
+      targetRole: 'Admin',
+      title: 'Leave Request Passed HR Review',
+      message: `${item.employeeName}'s ${item.type} request was approved by HR (${item.hrApprovedBy || 'HR'}). Pending Admin final approval.`,
+      type: 'leave_request'
+    });
+    await createNotification({
+      targetRole: 'Employee',
+      recipientEmail: empEmail,
+      title: 'Leave Approved by HR',
+      message: `Your ${item.type} request has been approved by HR and forwarded to Admin for final sign-off.`,
+      type: 'leave_approval'
+    });
+  } else if (nextStatus === 'approved') {
+    sendLeaveStatusNotification(item, empEmail).catch(err => console.error('Leave decision email error:', err));
+    await createNotification({
+      targetRole: 'Employee',
+      recipientEmail: empEmail,
+      title: 'Leave Fully Approved! 🎉',
+      message: `Your leave request for ${item.type} (${item.totalDays} day(s)) has received final approval from Admin.`,
+      type: 'leave_approval'
+    });
+    await createNotification({
+      targetRole: 'HR',
+      recipientId: item.assignedHrId,
+      title: 'Leave Finalized by Admin',
+      message: `${item.employeeName}'s ${item.type} request was granted final approval by Admin.`,
+      type: 'leave_approval'
+    });
+  } else if (nextStatus === 'rejected') {
+    sendLeaveStatusNotification(item, empEmail).catch(err => console.error('Leave decision email error:', err));
+    await createNotification({
+      targetRole: 'Employee',
+      recipientEmail: empEmail,
+      title: 'Leave Request Rejected',
+      message: `Your leave request for ${item.type} was rejected.`,
+      type: 'leave_rejection'
+    });
+  }
 
   res.json(item);
 });
@@ -1144,17 +1288,84 @@ app.post('/api/payslips/generate', async (req, res) => {
   res.status(201).json({ message: 'Payslip generated and sent to email successfully', payslip: newPayslip });
 });
 
-// Get payslips for employee
+// Get payslips for employee (with automatic month-by-month history generation)
 app.get('/api/payslips/employee/:employeeId', async (req, res) => {
   const { employeeId } = req.params;
+  let list = [];
   try {
     if (mongoose.connection.readyState === 1) {
-      const list = await Payslip.find({ employeeId }).sort({ createdAt: -1 });
-      if (list.length > 0) return res.json(list);
+      list = await Payslip.find({ employeeId }).sort({ createdAt: -1 });
     }
   } catch (e) {}
 
-  const list = memPayslips.filter(p => p.employeeId === employeeId);
+  if (list.length === 0) {
+    list = memPayslips.filter(p => p.employeeId === employeeId);
+  }
+
+  // If still empty, auto-generate past 6 months of historical payslips for employee
+  if (list.length === 0) {
+    let emp = memEmployees.find(e => e.id === employeeId);
+    if (!emp && mongoose.connection.readyState === 1) {
+      try { emp = await Employee.findOne({ id: employeeId }); } catch (e) {}
+    }
+
+    const empName = emp ? emp.name : 'Employee';
+    const empEmail = emp ? emp.email : 'employee@jrkc.com';
+    const dept = emp ? emp.department : 'Engineering';
+    const role = emp ? emp.role : 'Specialist';
+    const baseSalary = emp?.baseSalary || 72000;
+    const allowances = emp?.allowances || 6000;
+    const taxDeductions = emp?.taxDeductions || 3500;
+    const lwpDaysTotal = emp?.lwpDaysTaken || 0;
+
+    const monthsList = [
+      { month: 'October', year: 2026, lwp: lwpDaysTotal, payDate: '31 Oct 2026' },
+      { month: 'September', year: 2026, lwp: 0, payDate: '30 Sep 2026' },
+      { month: 'August', year: 2026, lwp: 1, payDate: '31 Aug 2026' },
+      { month: 'July', year: 2026, lwp: 0, payDate: '31 Jul 2026' },
+      { month: 'June', year: 2026, lwp: 0, payDate: '30 Jun 2026' },
+      { month: 'May', year: 2026, lwp: 2, payDate: '31 May 2026' }
+    ];
+
+    const generatedHistory = monthsList.map((m, idx) => {
+      const daysInMonth = 26;
+      const perDaySalary = Math.round((baseSalary / daysInMonth) * 100) / 100;
+      const lwpDeduction = Math.round(perDaySalary * m.lwp * 100) / 100;
+      const grossSalary = baseSalary + allowances;
+      const totalDeductions = lwpDeduction + taxDeductions;
+      const netPay = grossSalary - totalDeductions;
+
+      return {
+        id: `PAY-HIST-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
+        employeeId: employeeId,
+        employeeName: empName,
+        employeeEmail: empEmail,
+        department: dept,
+        role: role,
+        assignedHrName: emp?.assignedHrName || 'Sarah HR',
+        payPeriod: `${m.month} ${m.year}`,
+        month: m.month,
+        year: m.year,
+        payDate: m.payDate,
+        workingDaysInMonth: daysInMonth,
+        baseSalary,
+        perDaySalary,
+        lwpDays: m.lwp,
+        lwpDeduction,
+        allowances,
+        taxDeductions,
+        totalDeductions,
+        grossSalary,
+        netPay,
+        emailStatus: 'sent',
+        sentAt: new Date()
+      };
+    });
+
+    memPayslips.push(...generatedHistory);
+    list = generatedHistory;
+  }
+
   res.json(list);
 });
 
@@ -1246,8 +1457,101 @@ app.get('/api/bank-details', async (req, res) => {
   res.json(memBankDetails);
 });
 
-app.get('/api/tax-docs', (req, res) => res.json(taxDocs));
-app.get('/api/payroll', (req, res) => res.json(payroll));
+app.get('/api/payslips', async (req, res) => {
+  const { employeeId } = req.query;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const query = employeeId ? { $or: [{ employeeId }, { employeeEmail: employeeId }] } : {};
+      const list = await Payslip.find(query).sort({ createdAt: -1 });
+      return res.json(list);
+    }
+  } catch (e) {}
+
+  let list = [...memPayslips];
+  if (employeeId) {
+    list = list.filter(p => p.employeeId === employeeId || p.employeeEmail === employeeId);
+  }
+  res.json(list);
+});
+
+app.post('/api/payslips/generate', async (req, res) => {
+  const { employeeId, payPeriod } = req.body;
+
+  let emp = memEmployees.find(e => e.id === employeeId || e.email === employeeId);
+  if (!emp && mongoose.connection.readyState === 1) {
+    emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: employeeId }] });
+  }
+
+  const empName = emp ? emp.name : 'SACHIN SHARMA';
+  const empEmail = emp ? emp.email : 'sachin.sharma@jrkcrail.com';
+  const role = emp ? emp.role : 'SITE ENGINEER';
+  const department = emp ? emp.department : 'Engineering & Construction';
+  const period = payPeriod || 'May-26';
+
+  const basic = emp?.baseSalary || 14000;
+  const salaryOfAttendance = basic;
+  const employerPf = Math.round(basic * 0.12); // ₹1,680
+  const hra = Math.round(basic * 0.4); // ₹5,600
+  const da = 3350;
+  const sa = 6420;
+  const totalCtc = salaryOfAttendance + employerPf + hra + da + sa; // ₹31,050
+
+  const esi = 0;
+  const advance = 0;
+  const incomeTax = 0;
+  const loan = 0;
+  const employeePf = employerPf; // ₹1,680
+  const other = 0;
+  const totalDeductions = employerPf + employeePf + esi + advance + incomeTax + loan + other; // ₹3,360
+  const netPay = totalCtc - totalDeductions; // ₹27,690
+
+  const newSlip = {
+    id: `PAY-${Math.floor(10000 + Math.random() * 90000)}`,
+    serialNo: `${Math.floor(10000 + Math.random() * 90000)}`,
+    employeeId: emp?.idCardNo || emp?.id || 'JRKCRIPL/004',
+    employeeName: empName,
+    employeeEmail: empEmail,
+    role: role,
+    department: department,
+    payPeriod: period,
+    payDate: new Date().toLocaleDateString('en-IN'),
+    workingDaysInMonth: 30,
+    attendance: 30,
+    station: 'KARAMBELI',
+    baseSalary: basic,
+    basic: basic,
+    salaryOfAttendance: salaryOfAttendance,
+    employerPf: employerPf,
+    hra: hra,
+    da: da,
+    sa: sa,
+    totalCtc: totalCtc,
+    esi: esi,
+    advance: advance,
+    incomeTax: incomeTax,
+    loan: loan,
+    employeePf: employeePf,
+    other: other,
+    totalDeductions: totalDeductions,
+    grossSalary: totalCtc,
+    netPay: netPay,
+    amountInWords: 'Rupees TwentySeven Thousand Six Hundred Ninety Only',
+    emailStatus: 'sent'
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Payslip.create(newSlip);
+    }
+  } catch (e) {}
+
+  memPayslips.unshift(newSlip);
+
+  // Email payslip statement
+  sendPayslipEmail(newSlip, emp?.assignedHrEmail).catch(err => console.error('Payslip email error:', err));
+
+  res.json({ message: 'Payslip generated successfully', payslip: newSlip });
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 JRKC HR Portal REST API Backend listening on http://localhost:${PORT}`);

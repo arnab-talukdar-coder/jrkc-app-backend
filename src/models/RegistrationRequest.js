@@ -12,6 +12,8 @@ const RegistrationRequestSchema = new mongoose.Schema({
   assignedHrId: String,
   assignedHrName: String,
   status: { type: String, enum: ['pending_approval', 'approved', 'rejected'], default: 'pending_approval' },
+  agreedToTerms: { type: Boolean, default: true },
+  termsAcceptedAt: String,
   rejectionReason: String,
   dateSubmitted: { type: String, default: () => new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) }
 }, { timestamps: true });

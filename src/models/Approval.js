@@ -12,12 +12,21 @@ const ApprovalSchema = new mongoose.Schema({
   assignedHrId: String,
   assignedHrName: String,
   assignedHrEmail: String,
+  newAvatarUrl: String,
   startDate: String,
   endDate: String,
   totalDays: { type: Number, default: 1 },
   isLwp: { type: Boolean, default: false },
   lwpDays: { type: Number, default: 0 },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  status: { 
+    type: String, 
+    enum: ['pending', 'pending_hr', 'pending_admin', 'approved', 'rejected', 'cancelled', 'cancellation_pending'], 
+    default: 'pending_hr' 
+  },
+  hrApprovedBy: String,
+  hrApprovedAt: String,
+  adminApprovedBy: String,
+  adminApprovedAt: String,
   dateSubmitted: String
 }, { timestamps: true });
 

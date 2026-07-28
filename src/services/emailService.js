@@ -6,29 +6,45 @@ let transporter = null;
 async function getTransporter() {
   if (transporter) return transporter;
 
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
+  const emailUser = process.env.GMAIL_USER || process.env.SMTP_USER;
+  const emailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
+  const smtpHost = process.env.SMTP_HOST;
+
+  if (emailUser && emailPass) {
+    if (smtpHost && !smtpHost.includes('gmail')) {
+      transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+          user: emailUser,
+          pass: emailPass
+        }
+      });
+    } else {
+      // Use Gmail SMTP Service directly
+      transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: emailUser,
+          pass: emailPass
+        }
+      });
+    }
   } else {
     // Development / Fallback mode using console logger & mock transport
     transporter = {
       sendMail: async (mailOptions) => {
-        console.log('\n=================== [EMAIL DISPATCHED] ===================');
-        console.log(`FROM   : ${mailOptions.from || 'JRKC HR Portal <noreply@jrkc.com>'}`);
+        console.log('\n=================== [GMAIL DISPATCHED] ===================');
+        console.log(`FROM   : ${mailOptions.from || 'JRKC HR Portal <noreply@gmail.com>'}`);
         console.log(`TO     : ${mailOptions.to}`);
         if (mailOptions.cc) console.log(`CC     : ${mailOptions.cc}`);
+        if (mailOptions.replyTo) console.log(`REPLY-TO: ${mailOptions.replyTo}`);
         console.log(`SUBJECT: ${mailOptions.subject}`);
         console.log('--- BODY SUMMARY ---');
         console.log(mailOptions.text || 'HTML Content Included (See HTML below)');
         console.log('=========================================================\n');
-        return { messageId: `mock-${Date.now()}` };
+        return { messageId: `gmail-mock-${Date.now()}` };
       }
     };
   }
@@ -36,8 +52,10 @@ async function getTransporter() {
   return transporter;
 }
 
-const SENDER = process.env.SMTP_FROM || '"JRKC HR Portal System" <hr-portal@jrkc.com>';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@jrkc.com';
+const SENDER = process.env.GMAIL_USER
+  ? `"${process.env.SENDER_NAME || 'JRKC HR Portal'}" <${process.env.GMAIL_USER}>`
+  : (process.env.SMTP_FROM || '"JRKC HR Portal System" <hr-portal@jrkc.com>');
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.GMAIL_USER || 'admin@jrkc.com';
 
 /**
  * 1. Send Registration Notification to Admin/Director

@@ -759,8 +759,8 @@ app.post('/api/employees/photo-request', async (req, res) => {
 app.post('/api/attendance/clock-in', async (req, res) => {
   const { employeeId, email } = req.body;
   const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now.toLocaleDateString('en-IN', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
   const logEntry = {
     id: `ATT-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -768,7 +768,7 @@ app.post('/api/attendance/clock-in', async (req, res) => {
     date: dateStr,
     clockInTime: timeStr,
     clockOutTime: null,
-    hours: `${timeStr} - Present`,
+    hours: `${timeStr} - Active`,
     duration: 'Active Session',
     status: 'Active',
     createdAt: now.toISOString()
@@ -803,18 +803,20 @@ app.post('/api/attendance/clock-in', async (req, res) => {
 app.post('/api/attendance/clock-out', async (req, res) => {
   const { employeeId, email } = req.body;
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
   try {
     if (mongoose.connection.readyState === 1) {
       const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] });
       if (emp) {
         emp.status = 'Clocked Out';
-        if (emp.recentLogs && emp.recentLogs.length > 0 && emp.recentLogs[0].status === 'Active') {
-          emp.recentLogs[0].clockOutTime = timeStr;
-          emp.recentLogs[0].hours = `${emp.recentLogs[0].clockInTime || '09:00 AM'} - ${timeStr}`;
-          emp.recentLogs[0].duration = 'Completed Shift';
-          emp.recentLogs[0].status = 'Completed';
+        const activeLog = emp.recentLogs?.find(l => l.status === 'Active' || !l.clockOutTime) || (emp.recentLogs && emp.recentLogs[0]);
+        if (activeLog) {
+          const inTime = activeLog.clockInTime || timeStr;
+          activeLog.clockOutTime = timeStr;
+          activeLog.hours = `${inTime} - ${timeStr}`;
+          activeLog.duration = 'Completed Shift';
+          activeLog.status = 'Completed';
         }
         await emp.save();
         return res.json({ message: 'Clocked out successfully', employee: emp });
@@ -825,11 +827,13 @@ app.post('/api/attendance/clock-out', async (req, res) => {
   let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
   if (emp) {
     emp.status = 'Clocked Out';
-    if (emp.recentLogs && emp.recentLogs.length > 0 && emp.recentLogs[0].status === 'Active') {
-      emp.recentLogs[0].clockOutTime = timeStr;
-      emp.recentLogs[0].hours = `${emp.recentLogs[0].clockInTime || '09:00 AM'} - ${timeStr}`;
-      emp.recentLogs[0].duration = 'Completed Shift';
-      emp.recentLogs[0].status = 'Completed';
+    const activeLog = emp.recentLogs?.find(l => l.status === 'Active' || !l.clockOutTime) || (emp.recentLogs && emp.recentLogs[0]);
+    if (activeLog) {
+      const inTime = activeLog.clockInTime || timeStr;
+      activeLog.clockOutTime = timeStr;
+      activeLog.hours = `${inTime} - ${timeStr}`;
+      activeLog.duration = 'Completed Shift';
+      activeLog.status = 'Completed';
     }
     return res.json({ message: 'Clocked out successfully', employee: emp });
   }
@@ -841,7 +845,7 @@ app.post('/api/attendance/clock-out', async (req, res) => {
 app.post('/api/attendance/timesheet-entry', async (req, res) => {
   const { employeeId, email, projectName, hours, notes, date } = req.body;
   const now = new Date();
-  const dateStr = date || now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  const dateStr = date || now.toLocaleDateString('en-IN', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'Asia/Kolkata' });
 
   const projectEntry = {
     id: `TS-${Math.floor(1000 + Math.random() * 9000)}`,

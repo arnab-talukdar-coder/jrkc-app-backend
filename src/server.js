@@ -1310,8 +1310,8 @@ app.get('/api/payslips/employee/:employeeId', async (req, res) => {
     list = memPayslips.filter(p => p.employeeId === employeeId);
   }
 
-  // If still empty, auto-generate past 6 months of historical payslips for employee
-  if (list.length === 0) {
+  // If still empty, auto-generate past 6 months of historical payslips ONLY for initial demo employee
+  if (list.length === 0 && (employeeId === 'EMP-0001' || employeeId === 'EMP-001' || employeeId === 'EMP-1001')) {
     let emp = memEmployees.find(e => e.id === employeeId);
     if (!emp && mongoose.connection.readyState === 1) {
       try { emp = await Employee.findOne({ id: employeeId }); } catch (e) {}

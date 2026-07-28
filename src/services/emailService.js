@@ -184,34 +184,45 @@ export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail
     </div>
   `;
 
-  // Send to Employee
-  await mailer.sendMail({
-    from: SENDER,
-    to: employeeDetails.email,
-    subject,
-    text: `Welcome ${employeeDetails.name}! Your account is approved. Login Email: ${employeeDetails.email}, System-Generated Password: ${passToDisplay}.`,
-    html
-  });
-
-  // Notify Assigned HR
-  if (assignedHrEmail) {
-    const hrSubject = `[HR Assignment] New Employee Joined: ${employeeDetails.name}`;
-    const hrHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px; border: 1px solid #3b82f6; border-radius: 8px;">
-        <h3 style="color: #2563eb;">New Employee Assigned to You</h3>
-        <p>Hello HR,</p>
-        <p><strong>${employeeDetails.name}</strong> (${employeeDetails.email}) has been approved by Admin and assigned to you.</p>
-        <p>Department: ${employeeDetails.department} | Position: ${employeeDetails.role}</p>
-      </div>
-    `;
-    await mailer.sendMail({
+  let employeeMailRes = null;
+  try {
+    // Send to Employee
+    employeeMailRes = await mailer.sendMail({
       from: SENDER,
-      to: assignedHrEmail,
-      subject: hrSubject,
-      text: `New employee ${employeeDetails.name} has been assigned to you.`,
-      html: hrHtml
+      to: employeeDetails.email,
+      subject,
+      text: `Welcome ${employeeDetails.name}! Your account is approved. Login Email: ${employeeDetails.email}, System-Generated Password: ${passToDisplay}.`,
+      html
     });
+  } catch (err) {
+    console.error(`Failed sending approval email to employee (${employeeDetails.email}):`, err);
   }
+
+  // Notify Assigned HR (isolated error handling for dummy/internal HR emails)
+  if (assignedHrEmail && assignedHrEmail !== employeeDetails.email) {
+    try {
+      const hrSubject = `[HR Assignment] New Employee Joined: ${employeeDetails.name}`;
+      const hrHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px; border: 1px solid #3b82f6; border-radius: 8px;">
+          <h3 style="color: #2563eb;">New Employee Assigned to You</h3>
+          <p>Hello HR,</p>
+          <p><strong>${employeeDetails.name}</strong> (${employeeDetails.email}) has been approved by Admin and assigned to you.</p>
+          <p>Department: ${employeeDetails.department} | Position: ${employeeDetails.role}</p>
+        </div>
+      `;
+      await mailer.sendMail({
+        from: SENDER,
+        to: assignedHrEmail,
+        subject: hrSubject,
+        text: `New employee ${employeeDetails.name} has been assigned to you.`,
+        html: hrHtml
+      });
+    } catch (hrErr) {
+      console.warn(`Could not send HR notification email to ${assignedHrEmail}:`, hrErr.message);
+    }
+  }
+
+  return employeeMailRes;
 }
 
 /**

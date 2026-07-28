@@ -89,6 +89,57 @@ export async function sendAdminRegistrationAlert(requestDetails) {
 }
 
 /**
+ * 1b. Send Registration Received Confirmation Email to Candidate/Employee
+ */
+export async function sendRegistrationConfirmationToEmployee(requestDetails) {
+  const mailer = await getTransporter();
+  const subject = `Registration Request Received — JRKC Rail Infra Portal`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 22px; border: 1px solid #2563eb; border-radius: 10px; background-color: #ffffff;">
+      <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px;">
+        <h2 style="color: #1d4ed8; margin: 0;">Registration Request Received 📩</h2>
+      </div>
+
+      <p style="color: #334155; font-size: 14px; line-height: 1.5;">
+        Hello <strong>${requestDetails.name}</strong>,<br>
+        Thank you for registering with <strong>JRKC Rail Infra Private Limited</strong>.
+      </p>
+
+      <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 18px 0;">
+        <h4 style="color: #1e40af; margin: 0 0 8px 0; font-size: 14px;">📋 Submitted Details:</h4>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13px;"><strong>Name:</strong> ${requestDetails.name}</p>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13px;"><strong>Email:</strong> ${requestDetails.email}</p>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13px;"><strong>Department:</strong> ${requestDetails.department}</p>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13px;"><strong>Requested System Role:</strong> ${requestDetails.requestedUserRole || requestDetails.role}</p>
+      </div>
+
+      <p style="color: #475569; font-size: 13.5px; line-height: 1.5;">
+        Your application is currently being reviewed by our Admin & Management team.
+      </p>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 12px; margin: 15px 0;">
+        <p style="margin: 0; color: #334155; font-size: 13px;">
+          🔑 <strong>Next Steps:</strong> Once your application is approved, your official system access credentials and generated password will automatically be emailed to this address.
+        </p>
+      </div>
+
+      <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+        JRKC Rail Infra Private Limited • CIN-U30204UP2023PTC187418<br>
+        “Smart Rail Infra, Stronger Nation.”
+      </div>
+    </div>
+  `;
+
+  return mailer.sendMail({
+    from: SENDER,
+    to: requestDetails.email,
+    subject,
+    text: `Hello ${requestDetails.name}, your registration request for JRKC Rail Infra Portal has been received and is pending Admin approval. Once approved, your login credentials will be emailed to you.`,
+    html
+  });
+}
+
+/**
  * 2. Send Welcome & Approval Email to Employee and Assigned HR
  */
 export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail, generatedPassword) {

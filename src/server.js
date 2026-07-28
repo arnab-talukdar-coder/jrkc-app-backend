@@ -15,6 +15,7 @@ import { Payslip } from './models/Payslip.js';
 import { Notification } from './models/Notification.js';
 import {
   sendAdminRegistrationAlert,
+  sendRegistrationConfirmationToEmployee,
   sendEmployeeApprovalEmail,
   sendLeaveRequestAlert,
   sendLeaveStatusNotification,
@@ -216,8 +217,9 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     if (mongoose.connection.readyState === 1) {
       const saved = await RegistrationRequest.create(newReg);
-      // Email Admin
-      sendAdminRegistrationAlert(saved).catch(err => console.error('Email alert error:', err));
+      // Email Admin Alert & Employee Confirmation
+      sendAdminRegistrationAlert(saved).catch(err => console.error('Admin email alert error:', err));
+      sendRegistrationConfirmationToEmployee(saved).catch(err => console.error('Employee registration confirmation email error:', err));
       // Notify Admin
       await createNotification({
         targetRole: 'Admin',
@@ -230,7 +232,8 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (e) {}
 
   memRegistrationRequests.unshift(newReg);
-  sendAdminRegistrationAlert(newReg).catch(err => console.error('Email alert error:', err));
+  sendAdminRegistrationAlert(newReg).catch(err => console.error('Admin email alert error:', err));
+  sendRegistrationConfirmationToEmployee(newReg).catch(err => console.error('Employee registration confirmation email error:', err));
   await createNotification({
     targetRole: 'Admin',
     title: 'New Registration Request',

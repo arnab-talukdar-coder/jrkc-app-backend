@@ -26,9 +26,6 @@ import {
   INITIAL_EMPLOYEES,
   INITIAL_APPROVALS,
   INITIAL_ANNOUNCEMENTS,
-  INITIAL_BANK_DETAILS,
-  INITIAL_TAX_DOCS,
-  INITIAL_PAYROLL,
   INITIAL_REGISTRATION_REQUESTS,
   INITIAL_PAYSLIPS
 } from './data/initialData.js';
@@ -67,22 +64,9 @@ app.use((req, res, next) => {
 let memEmployees = [...INITIAL_EMPLOYEES];
 let memApprovals = [...INITIAL_APPROVALS];
 let memAnnouncements = [...INITIAL_ANNOUNCEMENTS];
-let memBankDetails = { ...INITIAL_BANK_DETAILS };
 let memRegistrationRequests = [...INITIAL_REGISTRATION_REQUESTS];
 let memPayslips = [...INITIAL_PAYSLIPS];
-let memNotifications = [
-  {
-    id: 'NOTIF-01',
-    targetRole: 'Admin',
-    title: 'New Registration Request',
-    message: 'Daniel Kim requested employee account registration.',
-    type: 'registration',
-    read: false,
-    createdAtDate: new Date().toLocaleString()
-  }
-];
-let taxDocs = [...INITIAL_TAX_DOCS];
-let payroll = { ...INITIAL_PAYROLL };
+let memNotifications = [];
 
 // Connect to MongoDB & Seed Initial Data if Empty
 async function initDatabase() {
@@ -509,10 +493,11 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
 
   regItem.status = 'approved';
 
-  // Find assigned HR details
+  // Find assigned HR details — look up actual HR in the system
   let hrObj = memEmployees.find(e => e.id === (assignedHrId || regItem.assignedHrId) && e.userRole === 'HR');
   if (!hrObj) {
-    hrObj = { id: 'HR-0010', name: 'Sarah Chen', email: 'sarah.chen@jrkc.com' };
+    // Fall back to the first available HR in the system
+    hrObj = memEmployees.find(e => e.userRole === 'HR') || { id: 'HR-0001', name: 'HR Manager', email: 'hr@yopmail.com' };
   }
 
   // Always generate a secure system password for the approved employee
@@ -770,7 +755,9 @@ app.post('/api/attendance/clock-in', async (req, res) => {
     type: 'clock_punch',
     date: dateStr,
     clockInTime: timeStr,
+    clockInTimestamp: now.toISOString(),
     clockOutTime: null,
+    clockOutTimestamp: null,
     hours: `${timeStr} - Active`,
     duration: 'Active Session',
     status: 'Active',
@@ -802,6 +789,21 @@ app.post('/api/attendance/clock-in', async (req, res) => {
   res.status(404).json({ error: 'Employee not found' });
 });
 
+// Helper: Compute human-readable duration between two timestamps
+function computeDuration(inTimestamp, outTime) {
+  if (!inTimestamp) return 'Completed Shift';
+  try {
+    const diffMs = outTime - new Date(inTimestamp);
+    if (diffMs <= 0) return 'Completed Shift';
+    const totalMins = Math.floor(diffMs / 60000);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  } catch (e) {
+    return 'Completed Shift';
+  }
+}
+
 // Clock Out Endpoint
 app.post('/api/attendance/clock-out', async (req, res) => {
   const { employeeId, email } = req.body;
@@ -816,9 +818,11 @@ app.post('/api/attendance/clock-out', async (req, res) => {
         const activeLog = emp.recentLogs?.find(l => l.status === 'Active' || !l.clockOutTime) || (emp.recentLogs && emp.recentLogs[0]);
         if (activeLog) {
           const inTime = activeLog.clockInTime || timeStr;
+          const duration = computeDuration(activeLog.clockInTimestamp, now);
           activeLog.clockOutTime = timeStr;
+          activeLog.clockOutTimestamp = now.toISOString();
           activeLog.hours = `${inTime} - ${timeStr}`;
-          activeLog.duration = 'Completed Shift';
+          activeLog.duration = duration;
           activeLog.status = 'Completed';
         }
         await emp.save();
@@ -833,9 +837,11 @@ app.post('/api/attendance/clock-out', async (req, res) => {
     const activeLog = emp.recentLogs?.find(l => l.status === 'Active' || !l.clockOutTime) || (emp.recentLogs && emp.recentLogs[0]);
     if (activeLog) {
       const inTime = activeLog.clockInTime || timeStr;
+      const duration = computeDuration(activeLog.clockInTimestamp, now);
       activeLog.clockOutTime = timeStr;
+      activeLog.clockOutTimestamp = now.toISOString();
       activeLog.hours = `${inTime} - ${timeStr}`;
-      activeLog.duration = 'Completed Shift';
+      activeLog.duration = duration;
       activeLog.status = 'Completed';
     }
     return res.json({ message: 'Clocked out successfully', employee: emp });
@@ -964,9 +970,11 @@ app.post('/api/approvals', async (req, res) => {
     try { emp = await Employee.findOne({ $or: [{ id: employeeId }, { name: employeeName }] }); } catch (e) {}
   }
 
-  const assignedHrId = emp ? emp.assignedHrId : 'HR-0010';
-  const assignedHrName = emp ? emp.assignedHrName : 'Sarah Chen';
-  const assignedHrEmail = emp ? emp.assignedHrEmail : 'sarah.chen@jrkc.com';
+  // Find actual assigned HR or fall back to first HR in the system
+  const defaultHr = memEmployees.find(e => e.userRole === 'HR') || { id: 'HR-0001', name: 'HR Manager', email: 'hr@yopmail.com' };
+  const assignedHrId = emp ? (emp.assignedHrId || defaultHr.id) : defaultHr.id;
+  const assignedHrName = emp ? (emp.assignedHrName || defaultHr.name) : defaultHr.name;
+  const assignedHrEmail = emp ? (emp.assignedHrEmail || defaultHr.email) : defaultHr.email;
 
   const daysCount = Number(totalDays) || 1;
   const isLwpLeave = isLwp || type === 'LWP' || type === 'Leave Without Pay';
@@ -1296,7 +1304,7 @@ app.post('/api/payslips/generate', async (req, res) => {
   res.status(201).json({ message: 'Payslip generated and sent to email successfully', payslip: newPayslip });
 });
 
-// Get payslips for employee (with automatic month-by-month history generation)
+// Get payslips for specific employee
 app.get('/api/payslips/employee/:employeeId', async (req, res) => {
   const { employeeId } = req.params;
   let list = [];
@@ -1308,70 +1316,6 @@ app.get('/api/payslips/employee/:employeeId', async (req, res) => {
 
   if (list.length === 0) {
     list = memPayslips.filter(p => p.employeeId === employeeId);
-  }
-
-  // If still empty, auto-generate past 6 months of historical payslips ONLY for initial demo employee
-  if (list.length === 0 && (employeeId === 'EMP-0001' || employeeId === 'EMP-001' || employeeId === 'EMP-1001')) {
-    let emp = memEmployees.find(e => e.id === employeeId);
-    if (!emp && mongoose.connection.readyState === 1) {
-      try { emp = await Employee.findOne({ id: employeeId }); } catch (e) {}
-    }
-
-    const empName = emp ? emp.name : 'Employee';
-    const empEmail = emp ? emp.email : 'employee@jrkc.com';
-    const dept = emp ? emp.department : 'Engineering';
-    const role = emp ? emp.role : 'Specialist';
-    const baseSalary = emp?.baseSalary || 72000;
-    const allowances = emp?.allowances || 6000;
-    const taxDeductions = emp?.taxDeductions || 3500;
-    const lwpDaysTotal = emp?.lwpDaysTaken || 0;
-
-    const monthsList = [
-      { month: 'October', year: 2026, lwp: lwpDaysTotal, payDate: '31 Oct 2026' },
-      { month: 'September', year: 2026, lwp: 0, payDate: '30 Sep 2026' },
-      { month: 'August', year: 2026, lwp: 1, payDate: '31 Aug 2026' },
-      { month: 'July', year: 2026, lwp: 0, payDate: '31 Jul 2026' },
-      { month: 'June', year: 2026, lwp: 0, payDate: '30 Jun 2026' },
-      { month: 'May', year: 2026, lwp: 2, payDate: '31 May 2026' }
-    ];
-
-    const generatedHistory = monthsList.map((m, idx) => {
-      const daysInMonth = 26;
-      const perDaySalary = Math.round((baseSalary / daysInMonth) * 100) / 100;
-      const lwpDeduction = Math.round(perDaySalary * m.lwp * 100) / 100;
-      const grossSalary = baseSalary + allowances;
-      const totalDeductions = lwpDeduction + taxDeductions;
-      const netPay = grossSalary - totalDeductions;
-
-      return {
-        id: `PAY-HIST-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
-        employeeId: employeeId,
-        employeeName: empName,
-        employeeEmail: empEmail,
-        department: dept,
-        role: role,
-        assignedHrName: emp?.assignedHrName || 'Sarah HR',
-        payPeriod: `${m.month} ${m.year}`,
-        month: m.month,
-        year: m.year,
-        payDate: m.payDate,
-        workingDaysInMonth: daysInMonth,
-        baseSalary,
-        perDaySalary,
-        lwpDays: m.lwp,
-        lwpDeduction,
-        allowances,
-        taxDeductions,
-        totalDeductions,
-        grossSalary,
-        netPay,
-        emailStatus: 'sent',
-        sentAt: new Date()
-      };
-    });
-
-    memPayslips.push(...generatedHistory);
-    list = generatedHistory;
   }
 
   res.json(list);
@@ -1462,7 +1406,7 @@ app.get('/api/bank-details', async (req, res) => {
       if (bank) return res.json(bank);
     }
   } catch (e) {}
-  res.json(memBankDetails);
+  res.json({});
 });
 
 app.get('/api/payslips', async (req, res) => {
@@ -1482,84 +1426,7 @@ app.get('/api/payslips', async (req, res) => {
   res.json(list);
 });
 
-app.post('/api/payslips/generate', async (req, res) => {
-  const { employeeId, payPeriod } = req.body;
-
-  let emp = memEmployees.find(e => e.id === employeeId || e.email === employeeId);
-  if (!emp && mongoose.connection.readyState === 1) {
-    emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: employeeId }] });
-  }
-
-  const empName = emp ? emp.name : 'SACHIN SHARMA';
-  const empEmail = emp ? emp.email : 'sachin.sharma@jrkcrail.com';
-  const role = emp ? emp.role : 'SITE ENGINEER';
-  const department = emp ? emp.department : 'Engineering & Construction';
-  const period = payPeriod || 'May-26';
-
-  const basic = emp?.baseSalary || 14000;
-  const salaryOfAttendance = basic;
-  const employerPf = Math.round(basic * 0.12); // ₹1,680
-  const hra = Math.round(basic * 0.4); // ₹5,600
-  const da = 3350;
-  const sa = 6420;
-  const totalCtc = salaryOfAttendance + employerPf + hra + da + sa; // ₹31,050
-
-  const esi = 0;
-  const advance = 0;
-  const incomeTax = 0;
-  const loan = 0;
-  const employeePf = employerPf; // ₹1,680
-  const other = 0;
-  const totalDeductions = employerPf + employeePf + esi + advance + incomeTax + loan + other; // ₹3,360
-  const netPay = totalCtc - totalDeductions; // ₹27,690
-
-  const newSlip = {
-    id: `PAY-${Math.floor(10000 + Math.random() * 90000)}`,
-    serialNo: `${Math.floor(10000 + Math.random() * 90000)}`,
-    employeeId: emp?.idCardNo || emp?.id || 'JRKCRIPL/004',
-    employeeName: empName,
-    employeeEmail: empEmail,
-    role: role,
-    department: department,
-    payPeriod: period,
-    payDate: new Date().toLocaleDateString('en-IN'),
-    workingDaysInMonth: 30,
-    attendance: 30,
-    station: 'KARAMBELI',
-    baseSalary: basic,
-    basic: basic,
-    salaryOfAttendance: salaryOfAttendance,
-    employerPf: employerPf,
-    hra: hra,
-    da: da,
-    sa: sa,
-    totalCtc: totalCtc,
-    esi: esi,
-    advance: advance,
-    incomeTax: incomeTax,
-    loan: loan,
-    employeePf: employeePf,
-    other: other,
-    totalDeductions: totalDeductions,
-    grossSalary: totalCtc,
-    netPay: netPay,
-    amountInWords: 'Rupees TwentySeven Thousand Six Hundred Ninety Only',
-    emailStatus: 'sent'
-  };
-
-  try {
-    if (mongoose.connection.readyState === 1) {
-      await Payslip.create(newSlip);
-    }
-  } catch (e) {}
-
-  memPayslips.unshift(newSlip);
-
-  // Email payslip statement
-  sendPayslipEmail(newSlip, emp?.assignedHrEmail).catch(err => console.error('Payslip email error:', err));
-
-  res.json({ message: 'Payslip generated successfully', payslip: newSlip });
-});
+// (Duplicate payslips/generate route removed — use POST /api/payslips/generate above)
 
 // POST /api/payslips/:id/mark-paid
 // HR Marks Salary as Paid to Employee. Schedules PDF Email Dispatch after 4.5 hours delay!

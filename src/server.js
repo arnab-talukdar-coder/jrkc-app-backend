@@ -1394,7 +1394,9 @@ app.post('/api/payslips/generate', async (req, res) => {
 
   memPayslips.unshift(newPayslip);
 
-  // In-app notifications ONLY (No Email yet)
+  // Trigger Payslip Email to Employee with CC to HR & Admin
+  sendPayslipEmail(newPayslip, emp.assignedHrEmail || 'hr@yopmail.com').catch(err => console.error('Payslip email dispatch error:', err));
+
   await createNotification({
     targetRole: 'HR',
     recipientEmail: emp.email,

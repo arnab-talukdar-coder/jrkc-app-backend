@@ -289,67 +289,83 @@ export async function sendLeaveStatusNotification(leaveDetails, employeeEmail) {
 export async function sendPayslipEmail(payslip, hrEmail) {
   const mailer = await getTransporter();
   const ccEmails = [hrEmail, ADMIN_EMAIL].filter(Boolean).join(', ');
-  const subject = `Payslip Available for ${payslip.payPeriod} - ${payslip.employeeName}`;
+  const subject = `Official Payslip Statement — ${payslip.payPeriod || 'Monthly Salary'} | JRKC Rail Infra`;
+
+  const basic = Number(payslip.basic || payslip.baseSalary) || 0;
+  const hra = Number(payslip.hra) || 0;
+  const da = Number(payslip.da) || 0;
+  const sa = Number(payslip.sa) || 0;
+  const gross = Number(payslip.grossSalary || payslip.gross) || (basic + hra + da + sa);
+  const deductions = Number(payslip.totalDeductions || payslip.deductions) || 0;
+  const net = Number(payslip.netPay) || (gross - deductions);
+  const lwp = Number(payslip.lwpDays) || 0;
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 650px; padding: 25px; border: 1px solid #cbd5e1; border-radius: 10px; background-color: #ffffff;">
       <div style="border-bottom: 2px solid #4f46e5; padding-bottom: 15px; margin-bottom: 20px;">
         <h2 style="color: #4f46e5; margin: 0;">JRKC HR Portal - Official Payslip</h2>
-        <p style="color: #64748b; margin: 5px 0 0 0;">Pay Period: <strong>${payslip.payPeriod}</strong> | Date: ${payslip.payDate}</p>
+        <p style="color: #64748b; margin: 5px 0 0 0;">Pay Period: <strong>${payslip.payPeriod || 'Current Month'}</strong> | Date: ${payslip.payDate || new Date().toLocaleDateString('en-IN')}</p>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
         <tr style="background-color: #f8fafc;">
           <td style="padding: 10px; font-weight: bold; width: 30%;">Employee Name:</td>
-          <td style="padding: 10px;">${payslip.employeeName} (${payslip.employeeId})</td>
+          <td style="padding: 10px;">${payslip.employeeName || 'Employee'} (${payslip.employeeId || 'N/A'})</td>
         </tr>
         <tr>
           <td style="padding: 10px; font-weight: bold;">Department / Role:</td>
-          <td style="padding: 10px;">${payslip.department} - ${payslip.role}</td>
+          <td style="padding: 10px;">${payslip.department || 'Operations'} - ${payslip.role || 'Staff'}</td>
         </tr>
         <tr style="background-color: #f8fafc;">
           <td style="padding: 10px; font-weight: bold;">Email:</td>
-          <td style="padding: 10px;">${payslip.employeeEmail}</td>
+          <td style="padding: 10px;">${payslip.employeeEmail || ''}</td>
         </tr>
       </table>
 
-      <h4 style="color: #1e293b; margin-bottom: 10px;">Salary Breakdown</h4>
+      <h4 style="color: #1e293b; margin-bottom: 10px;">Salary Summary</h4>
       <table style="width: 100%; border-collapse: collapse; border: 1px solid #e2e8f0; margin-bottom: 20px;">
         <thead>
           <tr style="background-color: #4f46e5; color: white;">
             <th style="padding: 10px; text-align: left;">Component</th>
-            <th style="padding: 10px; text-align: right;">Amount ($)</th>
+            <th style="padding: 10px; text-align: right;">Amount (₹)</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Base Monthly Salary</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">$${payslip.baseSalary.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Basic Salary</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right;">₹${basic.toLocaleString('en-IN')}</td>
           </tr>
           <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Allowances</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #16a34a;">+$${payslip.allowances.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">HRA & Allowances</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #16a34a;">+₹${(hra + da + sa).toLocaleString('en-IN')}</td>
           </tr>
-          <tr style="background-color: ${payslip.lwpDays > 0 ? '#fef2f2' : '#ffffff'};">
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: ${payslip.lwpDays > 0 ? 'bold' : 'normal'}; color: ${payslip.lwpDays > 0 ? '#dc2626' : '#000'};">
-              LWP Deduction (${payslip.lwpDays} Day(s) @ $${payslip.perDaySalary.toFixed(2)}/day)
+          ${lwp > 0 ? `
+          <tr style="background-color: #fef2f2;">
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #dc2626; font-weight: bold;">
+              Leave Without Pay (${lwp} Day(s))
             </td>
             <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #dc2626; font-weight: bold;">
-              -$${payslip.lwpDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              -${lwp} Days
             </td>
           </tr>
+          ` : ''}
           <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Tax & Statutory Deductions</td>
-            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #dc2626;">-$${payslip.taxDeductions.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Gross Salary</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #16a34a; font-weight: bold;">₹${gross.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">Total Deductions (PF/ESI/Taxes)</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #dc2626;">-₹${deductions.toLocaleString('en-IN')}</td>
           </tr>
           <tr style="background-color: #f1f5f9; font-weight: bold; font-size: 16px;">
             <td style="padding: 12px;">NET PAYABLE AMOUNT</td>
-            <td style="padding: 12px; text-align: right; color: #4f46e5;">$${payslip.netPay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+            <td style="padding: 12px; text-align: right; color: #4f46e5;">₹${net.toLocaleString('en-IN')}</td>
           </tr>
         </tbody>
       </table>
 
       <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-        This is a system generated payslip from JRKC HR Portal. Confidential.
+        This is an official system generated payslip from JRKC HR Portal. Confidential.
       </div>
     </div>
   `;
@@ -359,7 +375,7 @@ export async function sendPayslipEmail(payslip, hrEmail) {
     to: payslip.employeeEmail,
     cc: ccEmails,
     subject,
-    text: `Payslip for ${payslip.payPeriod}: Net Pay $${payslip.netPay}. LWP Days: ${payslip.lwpDays}. Deduction: $${payslip.lwpDeduction}.`,
+    text: `Payslip for ${payslip.payPeriod}: Net Pay ₹${net.toLocaleString('en-IN')}. Log in to HR Portal to view or download full PDF.`,
     html
   });
 }

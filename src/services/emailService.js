@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import PDFDocument from 'pdfkit';
 
 // Helper to create transport
 let transporter = null;
@@ -284,6 +285,77 @@ export async function sendLeaveStatusNotification(leaveDetails, employeeEmail) {
 }
 
 /**
+ * Generate PDF Buffer for Payslip Email Attachment
+ */
+function createPayslipPDFBuffer(payslip) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      const buffers = [];
+      doc.on('data', b => buffers.push(b));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+
+      doc.rect(40, 40, 515, 60).fill('#4f46e5');
+      doc.fillColor('#ffffff').fontSize(18).text('JRKC RAIL INFRA PRIVATE LIMITED', 55, 55);
+      doc.fontSize(10).text('OFFICIAL MONTHLY PAYSLIP STATEMENT', 55, 78);
+
+      doc.fillColor('#1e293b').fontSize(12).text('EMPLOYEE & PAYROLL DETAILS', 40, 115);
+      doc.rect(40, 130, 515, 75).strokeColor('#cbd5e1').stroke();
+
+      doc.fontSize(10).fillColor('#334155');
+      doc.text('Employee Name: ' + (payslip.employeeName || 'Employee'), 50, 142);
+      doc.text('Employee ID: ' + (payslip.employeeId || 'EMP-1001'), 50, 158);
+      doc.text('Department: ' + (payslip.department || 'Operations'), 50, 174);
+
+      doc.text('Pay Period: ' + (payslip.payPeriod || 'Current Month'), 300, 142);
+      doc.text('Designation: ' + (payslip.role || 'Staff'), 300, 158);
+      doc.text('Issue Date: ' + (payslip.payDate || new Date().toLocaleDateString('en-IN')), 300, 174);
+
+      doc.rect(40, 220, 515, 24).fill('#f1f5f9');
+      doc.fillColor('#334155').fontSize(10).text('COMPONENT', 50, 227);
+      doc.text('EARNINGS (INR)', 300, 227);
+      doc.text('DEDUCTIONS (INR)', 420, 227);
+
+      const basic = Number(payslip.basic || payslip.baseSalary) || 0;
+      const hra = Number(payslip.hra) || 0;
+      const da = Number(payslip.da) || 0;
+      const sa = Number(payslip.sa) || 0;
+      const gross = Number(payslip.grossSalary || payslip.gross) || (basic + hra + da + sa);
+      const deductions = Number(payslip.totalDeductions || payslip.deductions) || 0;
+      const net = Number(payslip.netPay) || (gross - deductions);
+
+      let y = 255;
+      doc.fillColor('#1e293b').text('Basic Salary', 50, y);
+      doc.fillColor('#166534').text('INR ' + basic.toLocaleString('en-IN'), 300, y);
+      doc.fillColor('#1e293b').text('-', 420, y);
+      y += 20;
+
+      doc.fillColor('#1e293b').text('HRA & Special Allowances', 50, y);
+      doc.fillColor('#166534').text('+INR ' + (hra + da + sa).toLocaleString('en-IN'), 300, y);
+      doc.fillColor('#1e293b').text('-', 420, y);
+      y += 20;
+
+      if (deductions > 0) {
+        doc.fillColor('#1e293b').text('PF / Statutory Deductions', 50, y);
+        doc.text('-', 300, y);
+        doc.fillColor('#991b1b').text('-INR ' + deductions.toLocaleString('en-IN'), 420, y);
+        y += 20;
+      }
+
+      doc.rect(40, y + 10, 515, 30).fill('#e0e7ff');
+      doc.fillColor('#3730a3').fontSize(11).text('NET SALARY DISBURSED:', 50, y + 19);
+      doc.fontSize(12).text('INR ' + net.toLocaleString('en-IN'), 420, y + 19);
+
+      doc.fillColor('#94a3b8').fontSize(9).text('Confidential — System Generated Payslip Document | JRKC Rail Infra Private Limited', 40, 480, { align: 'center' });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
  * 5. Send Payslip Email to Employee with CC to HR & Admin
  */
 export async function sendPayslipEmail(payslip, hrEmail) {
@@ -364,19 +436,40 @@ export async function sendPayslipEmail(payslip, hrEmail) {
         </tbody>
       </table>
 
+      <p style="font-size: 13px; color: #475569; margin-top: 15px;">
+        📎 <strong>PDF Attachment Included:</strong> Your official printable PDF payslip document is attached to this email.
+      </p>
+
       <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
         This is an official system generated payslip from JRKC HR Portal. Confidential.
       </div>
     </div>
   `;
 
+  const pdfBuffer = await createPayslipPDFBuffer(payslip).catch(err => {
+    console.error('Payslip PDF Buffer generation error:', err);
+    return null;
+  });
+
+  const attachments = [];
+  if (pdfBuffer) {
+    const cleanName = (payslip.employeeName || 'Employee').replace(/[^a-zA-Z0-9]/g, '_');
+    const cleanPeriod = (payslip.payPeriod || 'Monthly').replace(/[^a-zA-Z0-9]/g, '_');
+    attachments.push({
+      filename: `Payslip_${cleanName}_${cleanPeriod}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf'
+    });
+  }
+
   return mailer.sendMail({
     from: SENDER,
     to: payslip.employeeEmail,
     cc: ccEmails,
     subject,
-    text: `Payslip for ${payslip.payPeriod}: Net Pay ₹${net.toLocaleString('en-IN')}. Log in to HR Portal to view or download full PDF.`,
-    html
+    text: `Payslip for ${payslip.payPeriod}: Net Pay ₹${net.toLocaleString('en-IN')}. PDF statement attached.`,
+    html,
+    attachments
   });
 }
 

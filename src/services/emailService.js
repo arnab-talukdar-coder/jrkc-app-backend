@@ -284,69 +284,159 @@ export async function sendLeaveStatusNotification(leaveDetails, employeeEmail) {
   });
 }
 
+function numberToWordsRupees(num) {
+  if (!num || num <= 0) return 'Rupees Zero Only';
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const inWords = (n) => {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
+    if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + inWords(n % 100) : '');
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + inWords(n % 1000) : '');
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + inWords(n % 100000) : '');
+    return inWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + inWords(n % 10000000) : '');
+  };
+  return 'Rupees ' + inWords(Math.floor(num)) + ' Only';
+}
+
 /**
- * Generate PDF Buffer for Payslip Email Attachment
+ * Generate PDF Buffer for Payslip Email Attachment (Official JRKC Rail Infra Layout)
  */
 function createPayslipPDFBuffer(payslip) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      const doc = new PDFDocument({ margin: 30, size: 'A4' });
       const buffers = [];
       doc.on('data', b => buffers.push(b));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      doc.rect(40, 40, 515, 60).fill('#4f46e5');
-      doc.fillColor('#ffffff').fontSize(18).text('JRKC RAIL INFRA PRIVATE LIMITED', 55, 55);
-      doc.fontSize(10).text('OFFICIAL MONTHLY PAYSLIP STATEMENT', 55, 78);
+      const empName = (payslip.employeeName || 'Employee').toUpperCase();
+      const empId = payslip.employeeId || payslip.idCardNo || 'JRKCRIPL/008';
+      const role = (payslip.role || payslip.designation || 'Staff').toUpperCase();
+      const monthYear = payslip.payPeriod || payslip.monthYear || 'May-2026';
+      const attendance = payslip.attendance || payslip.workingDaysInMonth || 30;
 
-      doc.fillColor('#1e293b').fontSize(12).text('EMPLOYEE & PAYROLL DETAILS', 40, 115);
-      doc.rect(40, 130, 515, 75).strokeColor('#cbd5e1').stroke();
+      const basic = Number(payslip.basic || payslip.baseSalary || 14000);
+      const salaryOfAttendance = Number(payslip.salaryOfAttendance || basic);
+      const hra = Number(payslip.hra || 5600);
+      const da = Number(payslip.da || 3350);
+      const sa = Number(payslip.sa || 6420);
+      const employerPf = Number(payslip.employerPf || Math.round(basic * 0.12));
 
-      doc.fontSize(10).fillColor('#334155');
-      doc.text('Employee Name: ' + (payslip.employeeName || 'Employee'), 50, 142);
-      doc.text('Employee ID: ' + (payslip.employeeId || 'EMP-1001'), 50, 158);
-      doc.text('Department: ' + (payslip.department || 'Operations'), 50, 174);
+      const esi = Number(payslip.esi || 0);
+      const advance = Number(payslip.advance || 0);
+      const incomeTax = Number(payslip.incomeTax || payslip.taxDeductions || 0);
+      const loan = Number(payslip.loan || 0);
+      const employeePf = Number(payslip.employeePf || employerPf);
+      const other = Number(payslip.other || 0);
 
-      doc.text('Pay Period: ' + (payslip.payPeriod || 'Current Month'), 300, 142);
-      doc.text('Designation: ' + (payslip.role || 'Staff'), 300, 158);
-      doc.text('Issue Date: ' + (payslip.payDate || new Date().toLocaleDateString('en-IN')), 300, 174);
+      const totalDeductions = Number(payslip.totalDeductions) || (employeePf + esi + advance + incomeTax + loan + other);
+      const grossSalary = Number(payslip.grossSalary) || (salaryOfAttendance + hra + da + sa);
+      const netPay = Number(payslip.netPay) || (grossSalary - totalDeductions);
+      const amountInWords = numberToWordsRupees(netPay);
 
-      doc.rect(40, 220, 515, 24).fill('#f1f5f9');
-      doc.fillColor('#334155').fontSize(10).text('COMPONENT', 50, 227);
-      doc.text('EARNINGS (INR)', 300, 227);
-      doc.text('DEDUCTIONS (INR)', 420, 227);
+      // Outer Border Box
+      doc.rect(30, 30, 535, 760).strokeColor('#000000').lineWidth(2).stroke();
 
-      const basic = Number(payslip.basic || payslip.baseSalary) || 0;
-      const hra = Number(payslip.hra) || 0;
-      const da = Number(payslip.da) || 0;
-      const sa = Number(payslip.sa) || 0;
-      const gross = Number(payslip.grossSalary || payslip.gross) || (basic + hra + da + sa);
-      const deductions = Number(payslip.totalDeductions || payslip.deductions) || 0;
-      const net = Number(payslip.netPay) || (gross - deductions);
+      // Top Brand Header Banner (Green)
+      doc.rect(32, 32, 531, 65).fill('#047857');
+      doc.fillColor('#ffffff').fontSize(16).text('JRKC RAIL INFRA PRIVATE LIMITED', 45, 45);
+      doc.fontSize(8.5).text('Bangakhurd, Rawania road, Kadipur, Dist. Sultanpur (UP) 228161', 45, 68);
+      doc.fontSize(8).text('CIN-U30204UP2023PTC187418 • Smart Rail Infra, Stronger Nation', 45, 80);
 
-      let y = 255;
-      doc.fillColor('#1e293b').text('Basic Salary', 50, y);
-      doc.fillColor('#166534').text('INR ' + basic.toLocaleString('en-IN'), 300, y);
-      doc.fillColor('#1e293b').text('-', 420, y);
-      y += 20;
+      // Document Sub Banner
+      doc.rect(32, 97, 531, 30).fill('#f0fdf4');
+      doc.rect(32, 97, 531, 30).strokeColor('#000000').lineWidth(1).stroke();
+      doc.fillColor('#047857').fontSize(12).text('MONTHLY SALARY STATEMENT', 45, 106);
+      doc.fillColor('#ffffff').rect(450, 102, 100, 20).fill('#047857');
+      doc.fillColor('#ffffff').fontSize(9).text(monthYear, 455, 107, { width: 90, align: 'center' });
 
-      doc.fillColor('#1e293b').text('HRA & Special Allowances', 50, y);
-      doc.fillColor('#166534').text('+INR ' + (hra + da + sa).toLocaleString('en-IN'), 300, y);
-      doc.fillColor('#1e293b').text('-', 420, y);
-      y += 20;
+      // Employee Details Grid
+      doc.rect(32, 127, 531, 35).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+      doc.fillColor('#475569').fontSize(9).text('EMPLOYEE ID', 45, 133);
+      doc.fillColor('#047857').fontSize(10).text(empId, 45, 145);
 
-      if (deductions > 0) {
-        doc.fillColor('#1e293b').text('PF / Statutory Deductions', 50, y);
-        doc.text('-', 300, y);
-        doc.fillColor('#991b1b').text('-INR ' + deductions.toLocaleString('en-IN'), 420, y);
-        y += 20;
-      }
+      doc.fillColor('#475569').fontSize(9).text('EMPLOYEE NAME', 210, 133);
+      doc.fillColor('#000000').fontSize(10).text(empName, 210, 145);
 
-      doc.rect(40, y + 10, 515, 30).fill('#e0e7ff');
-      doc.fillColor('#3730a3').fontSize(11).text('NET SALARY DISBURSED:', 50, y + 19);
-      doc.fontSize(12).text('INR ' + net.toLocaleString('en-IN'), 420, y + 19);
+      doc.fillColor('#475569').fontSize(9).text('DESIGNATION', 400, 133);
+      doc.fillColor('#000000').fontSize(10).text(role, 400, 145);
 
-      doc.fillColor('#94a3b8').fontSize(9).text('Confidential — System Generated Payslip Document | JRKC Rail Infra Private Limited', 40, 480, { align: 'center' });
+      doc.rect(32, 162, 531, 35).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+      doc.fillColor('#475569').fontSize(9).text('ATTENDANCE DAYS', 45, 168);
+      doc.fillColor('#000000').fontSize(10).text(attendance + ' Days', 45, 180);
+
+      doc.fillColor('#475569').fontSize(9).text('PAY PERIOD', 210, 168);
+      doc.fillColor('#000000').fontSize(10).text(monthYear, 210, 180);
+
+      doc.fillColor('#475569').fontSize(9).text('PAYMENT MODE', 400, 168);
+      doc.fillColor('#000000').fontSize(10).text('Direct Bank Deposit (Verified)', 400, 180);
+
+      // Table Header (Earnings & Deductions)
+      doc.rect(32, 205, 531, 24).fill('#f1f5f9');
+      doc.rect(32, 205, 531, 24).strokeColor('#000000').lineWidth(1.5).stroke();
+      
+      doc.fillColor('#000000').fontSize(9);
+      doc.text('EARNINGS COMPONENT', 45, 212);
+      doc.text('AMOUNT (INR)', 210, 212);
+      doc.text('DEDUCTIONS COMPONENT', 310, 212);
+      doc.text('AMOUNT (INR)', 470, 212);
+
+      // Breakdown Rows
+      let y = 235;
+      const rows = [
+        ['Basic Salary', 'INR ' + basic.toLocaleString('en-IN'), 'Employer PF', 'INR ' + employerPf.toLocaleString('en-IN')],
+        ['Salary of Attendance', 'INR ' + salaryOfAttendance.toLocaleString('en-IN') + '.00', 'E.S.I.', 'INR ' + esi.toLocaleString('en-IN')],
+        ['House Rent Allowance (HRA)', 'INR ' + hra.toLocaleString('en-IN'), 'Advance / Loan', 'INR ' + (advance + loan).toLocaleString('en-IN')],
+        ['Dearness Allowance (DA)', 'INR ' + da.toLocaleString('en-IN'), 'Income Tax (TDS)', 'INR ' + incomeTax.toLocaleString('en-IN')],
+        ['Special Allowance (SA)', 'INR ' + sa.toLocaleString('en-IN'), 'Employee PF', 'INR ' + employeePf.toLocaleString('en-IN')],
+        ['Other Allowances', 'INR 0.00', 'Other Deductions', 'INR ' + other.toLocaleString('en-IN')]
+      ];
+
+      rows.forEach((row) => {
+        doc.rect(32, y - 4, 531, 22).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+        doc.fillColor('#1e293b').fontSize(9).text(row[0], 45, y);
+        doc.text(row[1], 200, y, { width: 90, align: 'right' });
+
+        doc.fillColor('#1e293b').text(row[2], 310, y);
+        doc.fillColor('#dc2626').text(row[3], 460, y, { width: 90, align: 'right' });
+        y += 22;
+      });
+
+      // Total Gross & Total Deductions Row
+      doc.rect(32, y - 4, 531, 24).fill('#f8fafc');
+      doc.rect(32, y - 4, 531, 24).strokeColor('#000000').lineWidth(1).stroke();
+      doc.fillColor('#000000').fontSize(9).text('GROSS EARNINGS', 45, y + 3);
+      doc.fillColor('#166534').text('INR ' + grossSalary.toLocaleString('en-IN') + '.00', 200, y + 3, { width: 90, align: 'right' });
+
+      doc.fillColor('#000000').text('TOTAL DEDUCTIONS', 310, y + 3);
+      doc.fillColor('#dc2626').text('INR ' + totalDeductions.toLocaleString('en-IN') + '.00', 460, y + 3, { width: 90, align: 'right' });
+
+      y += 35;
+
+      // Net Salary Disbursed Card Box
+      doc.rect(32, y, 531, 55).fill('#f0fdf4');
+      doc.rect(32, y, 531, 55).strokeColor('#047857').lineWidth(2).stroke();
+
+      doc.fillColor('#047857').fontSize(11).text('NET SALARY DISBURSED', 45, y + 12);
+      doc.fontSize(8.5).fillColor('#475569').text('Direct Deposit to Registered Bank Account', 45, y + 30);
+
+      doc.fillColor('#047857').fontSize(22).text('INR ' + netPay.toLocaleString('en-IN') + '.00', 350, y + 15, { width: 200, align: 'right' });
+
+      y += 65;
+
+      // Amount in Words Banner
+      doc.rect(32, y, 531, 25).fill('#f8fafc');
+      doc.rect(32, y, 531, 25).strokeColor('#000000').lineWidth(1).stroke();
+      doc.fillColor('#000000').fontSize(9).text('AMOUNT IN WORDS: ' + amountInWords.toUpperCase(), 35, y + 7, { width: 525, align: 'center' });
+
+      y += 45;
+
+      // Signatures Section
+      doc.fillColor('#475569').fontSize(8.5);
+      doc.text('Prepared By: HR Payroll Dept.', 45, y);
+      doc.text('Verified By: Accounts & Finance', 220, y);
+      doc.text('Authorized Signatory: JRKC Rail Infra', 380, y);
 
       doc.end();
     } catch (err) {

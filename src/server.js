@@ -375,6 +375,62 @@ app.post('/api/auth/change-password', async (req, res) => {
   res.json({ message: 'Password changed successfully' });
 });
 
+// ── ADMIN RESET USER PASSWORD ENDPOINT ──
+app.post('/api/admin/reset-password', async (req, res) => {
+  const { employeeId, email, newPassword } = req.body;
+  if ((!employeeId && !email) || !newPassword) {
+    return res.status(400).json({ error: 'Employee ID or email, and new password are required' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  }
+
+  let user = null;
+  const searchEmail = email ? email.toLowerCase().trim() : null;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      if (searchEmail) {
+        user = await Employee.findOne({ email: searchEmail });
+      } else if (employeeId) {
+        user = await Employee.findOne({ id: employeeId });
+      }
+    }
+  } catch (e) {}
+
+  if (!user) {
+    if (searchEmail) {
+      user = memEmployees.find(e => e.email && e.email.toLowerCase() === searchEmail);
+    } else if (employeeId) {
+      user = memEmployees.find(e => e.id === employeeId);
+    }
+  }
+
+  if (!user) {
+    return res.status(404).json({ error: 'Employee account not found' });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  user.password = hashedPassword;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Employee.findOneAndUpdate({ email: user.email }, { password: hashedPassword });
+    }
+  } catch (e) {}
+
+  const idx = memEmployees.findIndex(e => e.email === user.email);
+  if (idx !== -1) memEmployees[idx].password = hashedPassword;
+
+  // Send email notification to user with new password
+  sendEmployeeApprovalEmail(user, null, newPassword).catch(err => console.error('Reset password email error:', err));
+
+  res.json({
+    message: `Password for ${user.name} (${user.email}) updated successfully.`,
+    user: { id: user.id, name: user.name, email: user.email }
+  });
+});
+
 // Register Admin User directly
 app.post('/api/auth/register-admin', async (req, res) => {
   const { name, email, phone, department, role, adminSecret, password } = req.body;

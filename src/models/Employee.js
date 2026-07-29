@@ -2,9 +2,17 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const LogSchema = new mongoose.Schema({
+  type: String,
   date: String,
   hours: String,
   duration: String,
+  createdAt: String,
+  clockInTime: String,
+  clockInTimestamp: String,
+  clockOutTime: String,
+  clockOutTimestamp: String,
+  projectName: String,
+  notes: String,
   status: String
 }, { _id: false });
 
@@ -24,6 +32,8 @@ const EmployeeSchema = new mongoose.Schema({
   termsVersion: { type: String, default: 'v1.0' },
   password: { type: String, default: null }, // set after approval
   clockTime: String,
+  clockInTimestamp: String,
+  clockOutTimestamp: String,
   returnsDate: String,
   ptoDays: { type: Number, default: 18 }, // EL (Earned Leave)
   ptoDaysTaken: { type: Number, default: 0 },
@@ -36,6 +46,8 @@ const EmployeeSchema = new mongoose.Schema({
   phone: String,
   dateOfBirth: String,
   dob: String,
+  bloodGroup: String,
+  station: String,
   idCardNo: String,
   validity: String,
   reportingManager: String,

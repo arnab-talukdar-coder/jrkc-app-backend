@@ -473,7 +473,7 @@ app.get('/api/admin/registration-requests', async (req, res) => {
 // Admin approves registration request
 app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
   const { id } = req.params;
-  const { assignedHrId } = req.body;
+  const { assignedHrId, salaryStructure, dob, bloodGroup, station, validity } = req.body;
 
   let regItem = null;
 
@@ -508,9 +508,9 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
     name: regItem.name,
     email: regItem.email.toLowerCase().trim(),
-    phone: regItem.phone,
-    department: regItem.department,
-    role: regItem.role,
+    phone: regItem.phone || '',
+    department: regItem.department || 'General',
+    role: regItem.role || 'Employee',
     userRole: regItem.requestedUserRole || 'Employee',
     status: 'Clocked Out',
     accountStatus: 'approved',
@@ -520,9 +520,23 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
     casualDays: 10, // CL (Casual Leave)
     lwpDaysTaken: 0,
     joiningDate: new Date().toLocaleDateString('en-IN'),
+    dateOfBirth: dob || 'Jan 01, 1995',
+    dob: dob || '01/01/1995',
+    bloodGroup: bloodGroup || 'O+',
+    station: station || 'KARAMBELI',
+    idCardNo: `JRKCRIPL/${Math.floor(100 + Math.random() * 900)}`,
+    validity: validity || 'March 2028',
     assignedHrId: hrObj.id,
     assignedHrName: hrObj.name,
     assignedHrEmail: hrObj.email,
+    salaryStructure: salaryStructure || {
+      basic: 0,
+      hra: 0,
+      da: 0,
+      sa: 0,
+      employerPf: 0,
+      employeePf: 0
+    },
     baseSalary: 60000,
     allowances: 5000,
     taxDeductions: 3000,
@@ -637,7 +651,7 @@ app.get('/api/employees', async (req, res) => {
 
 // Admin / HR Onboards New Employee Directly
 app.post('/api/employees', async (req, res) => {
-  const { name, email, phone, department, role, userRole, password, joiningDate, dateOfBirth } = req.body;
+  const { name, email, phone, department, role, userRole, password, joiningDate, dateOfBirth, dob, bloodGroup, station, validity, salaryStructure } = req.body;
 
   if (!name || !email) {
     return res.status(400).json({ error: 'Name and email are required for onboarding' });
@@ -662,10 +676,20 @@ app.post('/api/employees', async (req, res) => {
     casualDays: 10, // CL (Casual Leave)
     lwpDaysTaken: 0,
     joiningDate: joiningDate || new Date().toLocaleDateString('en-IN'),
-    dateOfBirth: dateOfBirth || 'Jan 01, 1995',
-    dob: dateOfBirth || '01/01/1995',
+    dateOfBirth: dateOfBirth || dob || 'Jan 01, 1995',
+    dob: dob || dateOfBirth || '01/01/1995',
+    bloodGroup: bloodGroup || 'O+',
+    station: station || 'KARAMBELI',
     idCardNo: `JRKCRIPL/${Math.floor(100 + Math.random() * 900)}`,
-    validity: 'March 2028',
+    validity: validity || 'March 2028',
+    salaryStructure: salaryStructure || {
+      basic: 0,
+      hra: 0,
+      da: 0,
+      sa: 0,
+      employerPf: 0,
+      employeePf: 0
+    },
     baseSalary: 60000,
     allowances: 5000,
     taxDeductions: 3000,
@@ -769,7 +793,11 @@ app.post('/api/attendance/clock-in', async (req, res) => {
       const emp = await Employee.findOneAndUpdate(
         { $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] },
         {
-          $set: { status: 'Clocked In' },
+          $set: { 
+            status: 'Clocked In',
+            clockInTimestamp: now.toISOString(),
+            clockOutTimestamp: null
+          },
           $push: { recentLogs: { $each: [logEntry], $position: 0 } }
         },
         { new: true }
@@ -781,6 +809,8 @@ app.post('/api/attendance/clock-in', async (req, res) => {
   let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
   if (emp) {
     emp.status = 'Clocked In';
+    emp.clockInTimestamp = now.toISOString();
+    emp.clockOutTimestamp = null;
     if (!emp.recentLogs) emp.recentLogs = [];
     emp.recentLogs.unshift(logEntry);
     return res.json({ message: 'Clocked in successfully', employee: emp, log: logEntry });
@@ -815,6 +845,7 @@ app.post('/api/attendance/clock-out', async (req, res) => {
       const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email ? email.toLowerCase().trim() : '' }] });
       if (emp) {
         emp.status = 'Clocked Out';
+        emp.clockOutTimestamp = now.toISOString();
         const activeLog = emp.recentLogs?.find(l => l.status === 'Active' || !l.clockOutTime) || (emp.recentLogs && emp.recentLogs[0]);
         if (activeLog) {
           const inTime = activeLog.clockInTime || timeStr;
@@ -834,6 +865,7 @@ app.post('/api/attendance/clock-out', async (req, res) => {
   let emp = memEmployees.find(e => e.id === employeeId || (email && e.email.toLowerCase() === email.toLowerCase()));
   if (emp) {
     emp.status = 'Clocked Out';
+    emp.clockOutTimestamp = now.toISOString();
     const activeLog = emp.recentLogs?.find(l => l.status === 'Active' || !l.clockOutTime) || (emp.recentLogs && emp.recentLogs[0]);
     if (activeLog) {
       const inTime = activeLog.clockInTime || timeStr;
@@ -1217,7 +1249,7 @@ app.patch('/api/approvals/:id', async (req, res) => {
 
 // Generate Payslip & Send Email to Employee (with CC to HR & Admin)
 app.post('/api/payslips/generate', async (req, res) => {
-  const { employeeId, payPeriod, workingDaysInMonth, customLwpDays } = req.body;
+  const { employeeId, payPeriod, workingDaysInMonth, customLwpDays, attendance, esi, advance, incomeTax, loan, other } = req.body;
 
   let emp = memEmployees.find(e => e.id === employeeId);
   if (!emp && mongoose.connection.readyState === 1) {
@@ -1229,17 +1261,36 @@ app.post('/api/payslips/generate', async (req, res) => {
   }
 
   const totalDaysInMonth = Number(workingDaysInMonth) || 30;
-  const lwpDays = customLwpDays !== undefined ? Number(customLwpDays) : (emp.lwpDaysTaken || 0);
+  // If HR provides attendance, LWP is totalDays - attendance
+  const actualAttendance = attendance !== undefined ? Number(attendance) : totalDaysInMonth;
+  const lwpDays = customLwpDays !== undefined ? Number(customLwpDays) : (totalDaysInMonth - actualAttendance);
 
-  const baseSalary = emp.baseSalary || 65000;
-  const perDaySalary = Math.round((baseSalary / totalDaysInMonth) * 100) / 100;
-  const lwpDeduction = Math.round(perDaySalary * lwpDays * 100) / 100;
+  // Parse salary structure (fallback to defaults if undefined)
+  const struct = emp.salaryStructure || { basic: 14000, hra: 5600, da: 3350, sa: 6420, employerPf: 1680, employeePf: 1680 };
+  const basic = Number(struct.basic) || 0;
+  const hra = Number(struct.hra) || 0;
+  const da = Number(struct.da) || 0;
+  const sa = Number(struct.sa) || 0;
+  const employerPf = Number(struct.employerPf) || 0;
+  const employeePf = Number(struct.employeePf) || 0;
 
-  const allowances = emp.allowances || 5000;
-  const taxDeductions = emp.taxDeductions || 3000;
+  // Calculate LWP against basic
+  const perDayBasic = Math.round((basic / totalDaysInMonth) * 100) / 100;
+  const lwpDeduction = Math.round(perDayBasic * lwpDays * 100) / 100;
+  
+  // Actually earned basic based on attendance
+  const salaryOfAttendance = basic - lwpDeduction;
 
-  const grossSalary = baseSalary + allowances;
-  const totalDeductions = lwpDeduction + taxDeductions;
+  const grossSalary = salaryOfAttendance + hra + da + sa;
+  
+  // Variable monthly deductions from HR payload
+  const esiNum = Number(esi) || 0;
+  const advanceNum = Number(advance) || 0;
+  const incomeTaxNum = Number(incomeTax) || 0;
+  const loanNum = Number(loan) || 0;
+  const otherNum = Number(other) || 0;
+  
+  const totalDeductions = employeePf + esiNum + advanceNum + incomeTaxNum + loanNum + otherNum;
   const netPay = grossSalary - totalDeductions;
 
   const newPayslip = {
@@ -1249,21 +1300,34 @@ app.post('/api/payslips/generate', async (req, res) => {
     employeeEmail: emp.email,
     department: emp.department,
     role: emp.role,
-    assignedHrName: emp.assignedHrName || 'Sarah Chen',
-    payPeriod: payPeriod || 'October 2026',
+    station: emp.station || 'KARAMBELI',
+    assignedHrName: emp.assignedHrName || 'HR Manager',
+    payPeriod: payPeriod || '10 May - 10 Jun 2026',
     payDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
     workingDaysInMonth: totalDaysInMonth,
-    baseSalary,
-    perDaySalary,
+    attendance: actualAttendance,
+    
+    // Components saved into payslip for PDF export
+    basic,
+    salaryOfAttendance,
+    hra,
+    da,
+    sa,
+    employerPf,
+    employeePf,
+    esi: esiNum,
+    advance: advanceNum,
+    incomeTax: incomeTaxNum,
+    loan: loanNum,
+    other: otherNum,
     lwpDays,
-    lwpDeduction,
-    allowances,
-    taxDeductions,
     totalDeductions,
     grossSalary,
     netPay,
-    emailStatus: 'sent',
-    sentAt: new Date()
+    
+    disbursementStatus: 'unpaid',
+    emailStatus: 'pending',
+    createdAt: new Date()
   };
 
   try {
@@ -1274,12 +1338,9 @@ app.post('/api/payslips/generate', async (req, res) => {
 
   memPayslips.unshift(newPayslip);
 
-  // Send Email with payslip to Employee (CC to Assigned HR & Admin)
-  sendPayslipEmail(newPayslip, emp.assignedHrEmail).catch(err => console.error('Payslip email error:', err));
-
-  // In-app notifications
+  // In-app notifications ONLY (No Email yet)
   await createNotification({
-    targetRole: 'Employee',
+    targetRole: 'HR',
     recipientEmail: emp.email,
     title: 'New Payslip Available',
     message: `Your payslip for ${newPayslip.payPeriod} has been generated and sent to your email. Net Pay: $${netPay.toLocaleString()}. (LWP Deduction: $${lwpDeduction}).`,

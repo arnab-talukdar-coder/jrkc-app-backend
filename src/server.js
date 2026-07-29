@@ -1317,9 +1317,28 @@ app.post('/api/payslips/generate', async (req, res) => {
   }
 
   const totalDaysInMonth = Number(workingDaysInMonth) || 30;
-  // If HR provides attendance, LWP is totalDays - attendance
-  const actualAttendance = attendance !== undefined ? Number(attendance) : totalDaysInMonth;
-  const lwpDays = customLwpDays !== undefined ? Number(customLwpDays) : (totalDaysInMonth - actualAttendance);
+
+  // Calculate unique clocked-in attendance days for this employee from logs
+  let clockedInDays = 0;
+  if (emp.recentLogs && Array.isArray(emp.recentLogs)) {
+    const uniqueDates = new Set();
+    emp.recentLogs.forEach(l => {
+      if (l.date || l.clockInTime || l.clockInTimestamp) {
+        const d = l.date || (l.clockInTimestamp ? new Date(l.clockInTimestamp).toISOString().split('T')[0] : null);
+        if (d) uniqueDates.add(d);
+      }
+    });
+    clockedInDays = uniqueDates.size;
+  }
+
+  // If HR provides attendance, LWP is totalDays - attendance; otherwise count exact clocked-in days
+  const actualAttendance = (attendance !== undefined && attendance !== null && attendance !== '') 
+    ? Number(attendance) 
+    : (clockedInDays > 0 ? clockedInDays : (emp.attendanceDays || totalDaysInMonth));
+
+  const lwpDays = customLwpDays !== undefined && customLwpDays !== null && customLwpDays !== ''
+    ? Number(customLwpDays) 
+    : Math.max(0, totalDaysInMonth - actualAttendance);
 
   // Parse salary structure (fallback to defaults if undefined)
   const struct = emp.salaryStructure || { basic: 14000, hra: 5600, da: 3350, sa: 6420, employerPf: 1680, employeePf: 1680 };

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const LogSchema = new mongoose.Schema({
+  id: String,
   type: String,
   date: String,
   hours: String,
@@ -13,7 +14,20 @@ const LogSchema = new mongoose.Schema({
   clockOutTimestamp: String,
   projectName: String,
   notes: String,
-  status: String
+  status: String,
+  // GPS tracking fields
+  clockInLatitude: Number,
+  clockInLongitude: Number,
+  clockOutLatitude: Number,
+  clockOutLongitude: Number,
+  deviceInfo: String
+}, { _id: false });
+
+const LocationSchema = new mongoose.Schema({
+  latitude: { type: Number, required: true },
+  longitude: { type: Number, required: true },
+  address: { type: String, default: '' },
+  geofenceRadius: { type: Number, default: 50 } // meters
 }, { _id: false });
 
 const EmployeeSchema = new mongoose.Schema({
@@ -30,18 +44,24 @@ const EmployeeSchema = new mongoose.Schema({
   agreedToTerms: { type: Boolean, default: true },
   termsAcceptedAt: String,
   termsVersion: { type: String, default: 'v1.0' },
-  password: { type: String, default: null }, // set after approval
+  password: { type: String, default: null },
   clockTime: String,
   clockInTimestamp: String,
   clockOutTimestamp: String,
   returnsDate: String,
-  ptoDays: { type: Number, default: 18 }, // EL (Earned Leave)
+
+  // Leave balances
+  ptoDays: { type: Number, default: 18 },       // Earned Leave (EL)
   ptoDaysTaken: { type: Number, default: 0 },
-  sickDays: { type: Number, default: 10 }, // SL (Sick Leave)
+  sickDays: { type: Number, default: 10 },       // Sick Leave (SL)
   sickDaysTaken: { type: Number, default: 0 },
-  casualDays: { type: Number, default: 10 }, // CL (Casual Leave)
+  casualDays: { type: Number, default: 10 },     // Casual Leave (CL)
   casualDaysTaken: { type: Number, default: 0 },
+  optionalDays: { type: Number, default: 2 },    // Optional Leave
+  optionalDaysTaken: { type: Number, default: 0 },
   lwpDaysTaken: { type: Number, default: 0 },
+
+  // Contact
   email: { type: String, required: true, unique: true },
   phone: String,
   dateOfBirth: String,
@@ -51,19 +71,48 @@ const EmployeeSchema = new mongoose.Schema({
   idCardNo: String,
   validity: String,
   reportingManager: String,
+
+  // HR Assignment
   assignedHrId: String,
   assignedHrName: String,
   assignedHrEmail: String,
+
+  // Dates
   joiningDate: String,
-  baseSalary: { type: Number, default: 60000 },
-  allowances: { type: Number, default: 5000 },
-  taxDeductions: { type: Number, default: 2000 },
+
+  // Salary
+  baseSalary: { type: Number, default: 0 },
+  allowances: { type: Number, default: 0 },
+  taxDeductions: { type: Number, default: 0 },
+  salaryStructure: {
+    basic: { type: Number, default: 0 },
+    hra: { type: Number, default: 0 },
+    da: { type: Number, default: 0 },
+    sa: { type: Number, default: 0 },
+    employerPf: { type: Number, default: 0 },
+    employeePf: { type: Number, default: 0 }
+  },
+
+  // GPS / Location
+  assignedLocation: LocationSchema,
+
+  // FCM Push Token
+  fcmToken: String,
+
+  // Attendance Logs
   recentLogs: [LogSchema]
 }, { timestamps: true });
 
-// Hash password before saving
+// Indexes for performance
+EmployeeSchema.index({ email: 1 });
+EmployeeSchema.index({ userRole: 1 });
+EmployeeSchema.index({ department: 1 });
+EmployeeSchema.index({ assignedHrId: 1 });
+EmployeeSchema.index({ accountStatus: 1 });
+
+// Hash password before saving (only if modified)
 EmployeeSchema.pre('save', async function (next) {
-  if (this.isModified('password') && this.password) {
+  if (this.isModified('password') && this.password && !this.password.startsWith('$2b$') && !this.password.startsWith('$2a$')) {
     this.password = await bcrypt.hash(this.password, 10);
   }
   next();

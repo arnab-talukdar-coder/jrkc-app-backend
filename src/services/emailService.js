@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
 
@@ -33,21 +34,32 @@ async function getTransporter() {
       });
     }
   } else {
-    // Development / Fallback mode using console logger & mock transport
+    // Only use fallback mode if no credentials are provided at all.
+    // If they provided credentials but connection fails, it will fail loudly.
+    console.warn('⚠️ WARNING: No GMAIL_USER or SMTP_USER provided in environment. Using console mock email transport.');
     transporter = {
       sendMail: async (mailOptions) => {
-        console.log('\n=================== [GMAIL DISPATCHED] ===================');
+        console.log('\n=================== [MOCK EMAIL DISPATCHED] ===================');
         console.log(`FROM   : ${mailOptions.from || 'JRKC HR Portal <noreply@gmail.com>'}`);
         console.log(`TO     : ${mailOptions.to}`);
         if (mailOptions.cc) console.log(`CC     : ${mailOptions.cc}`);
         if (mailOptions.replyTo) console.log(`REPLY-TO: ${mailOptions.replyTo}`);
         console.log(`SUBJECT: ${mailOptions.subject}`);
-        console.log('--- BODY SUMMARY ---');
-        console.log(mailOptions.text || 'HTML Content Included (See HTML below)');
-        console.log('=========================================================\n');
-        return { messageId: `gmail-mock-${Date.now()}` };
+        console.log('===============================================================\n');
+        return { messageId: `mock-${Date.now()}` };
       }
     };
+  }
+
+  // Verify connection configuration (only if it's a real transporter)
+  if (transporter && typeof transporter.verify === 'function') {
+    try {
+      await transporter.verify();
+      console.log('✅ SMTP Server Connection Verified Successfully!');
+    } catch (error) {
+      console.error('❌ SMTP Server Connection Error:', error);
+      throw new Error(`Email configuration failed: ${error.message}`);
+    }
   }
 
   return transporter;
@@ -196,7 +208,8 @@ export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail
       html
     });
   } catch (err) {
-    console.error(`Failed sending approval email to employee (${employeeDetails.email}):`, err);
+    console.error(`❌ Failed sending approval email to employee (${employeeDetails.email}):`, err.message);
+    console.error(err.stack);
   }
 
   // Notify Assigned HR (isolated error handling for dummy/internal HR emails)
@@ -219,7 +232,8 @@ export async function sendEmployeeApprovalEmail(employeeDetails, assignedHrEmail
         html: hrHtml
       });
     } catch (hrErr) {
-      console.warn(`Could not send HR notification email to ${assignedHrEmail}:`, hrErr.message);
+      console.error(`❌ Could not send HR notification email to ${assignedHrEmail}:`, hrErr.message);
+      console.error(hrErr.stack);
     }
   }
 

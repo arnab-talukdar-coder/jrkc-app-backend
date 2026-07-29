@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
@@ -68,33 +70,72 @@ let memRegistrationRequests = [...INITIAL_REGISTRATION_REQUESTS];
 let memPayslips = [...INITIAL_PAYSLIPS];
 let memNotifications = [];
 
+const STORE_PATH = path.resolve('src/data/db_store.json');
+
+function saveDiskStore() {
+  try {
+    const dir = path.dirname(STORE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const data = {
+      memEmployees,
+      memRegistrationRequests,
+      memApprovals,
+      memPayslips,
+      memNotifications
+    };
+    fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Disk store save error:', err.message);
+  }
+}
+
+function loadDiskStore() {
+  try {
+    if (fs.existsSync(STORE_PATH)) {
+      const raw = fs.readFileSync(STORE_PATH, 'utf-8');
+      const data = JSON.parse(raw);
+      if (data.memEmployees && Array.isArray(data.memEmployees) && data.memEmployees.length > 0) {
+        memEmployees = data.memEmployees;
+      }
+      if (data.memRegistrationRequests) memRegistrationRequests = data.memRegistrationRequests;
+      if (data.memApprovals) memApprovals = data.memApprovals;
+      if (data.memPayslips) memPayslips = data.memPayslips;
+      if (data.memNotifications) memNotifications = data.memNotifications;
+      console.log(`Loaded ${memEmployees.length} persistent employees from disk store.`);
+    }
+  } catch (err) {
+    console.error('Disk store load error:', err.message);
+  }
+}
+
 // Connect to MongoDB & Seed Initial Data if Empty
 async function initDatabase() {
+  loadDiskStore(); // Load existing persistent data from disk first
   await connectDB();
   if (mongoose.connection.readyState === 1) {
     try {
       const empCount = await Employee.countDocuments();
       if (empCount === 0) {
         console.log('Seeding initial employees into MongoDB...');
-        await Employee.insertMany(INITIAL_EMPLOYEES);
+        await Employee.insertMany(memEmployees);
       }
 
       const regCount = await RegistrationRequest.countDocuments();
-      if (regCount === 0) {
+      if (regCount === 0 && memRegistrationRequests.length > 0) {
         console.log('Seeding initial registration requests into MongoDB...');
-        await RegistrationRequest.insertMany(INITIAL_REGISTRATION_REQUESTS);
+        await RegistrationRequest.insertMany(memRegistrationRequests);
       }
 
       const appCount = await Approval.countDocuments();
-      if (appCount === 0) {
+      if (appCount === 0 && memApprovals.length > 0) {
         console.log('Seeding initial approvals into MongoDB...');
-        await Approval.insertMany(INITIAL_APPROVALS);
+        await Approval.insertMany(memApprovals);
       }
 
       const annCount = await Announcement.countDocuments();
-      if (annCount === 0) {
+      if (annCount === 0 && memAnnouncements.length > 0) {
         console.log('Seeding initial announcements into MongoDB...');
-        await Announcement.insertMany(INITIAL_ANNOUNCEMENTS);
+        await Announcement.insertMany(memAnnouncements);
       }
 
       const bankCount = await BankDetails.countDocuments();
@@ -216,6 +257,7 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (e) {}
 
   memRegistrationRequests.unshift(newReg);
+  saveDiskStore();
   sendAdminRegistrationAlert(newReg).catch(err => console.error('Admin email alert error:', err));
   sendRegistrationConfirmationToEmployee(newReg).catch(err => console.error('Employee registration confirmation email error:', err));
   await createNotification({
@@ -421,6 +463,7 @@ app.post('/api/admin/reset-password', async (req, res) => {
 
   const idx = memEmployees.findIndex(e => e.email === user.email);
   if (idx !== -1) memEmployees[idx].password = hashedPassword;
+  saveDiskStore();
 
   // Send email notification to user with new password
   sendEmployeeApprovalEmail(user, null, newPassword).catch(err => console.error('Reset password email error:', err));
@@ -610,6 +653,7 @@ app.post('/api/admin/registration-requests/:id/approve', async (req, res) => {
   const index = memRegistrationRequests.findIndex(r => r.id === id);
   if (index !== -1) memRegistrationRequests[index].status = 'approved';
   memEmployees.unshift(newEmp);
+  saveDiskStore();
 
   // Trigger emails to Employee & Assigned HR (with system generated temp password)
   sendEmployeeApprovalEmail(newEmp, hrObj.email, tempPassword).catch(err => console.error('Welcome email error:', err));
@@ -760,6 +804,7 @@ app.post('/api/employees', async (req, res) => {
   } catch (e) {}
 
   memEmployees.unshift(newEmp);
+  saveDiskStore();
   res.status(201).json(newEmp);
 });
 

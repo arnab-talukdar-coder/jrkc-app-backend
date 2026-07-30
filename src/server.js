@@ -57,6 +57,8 @@ import {
   INITIAL_PAYSLIPS,
   INITIAL_BANK_DETAILS
 } from './data/initialData.js';
+import { calculateSalaryForEmployee, calculateMonSatWorkingDays } from './services/payrollService.js';
+import { seedDevelopmentData } from './services/mockDataSeeder.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -161,8 +163,10 @@ async function initDatabase() {
       // Ensure global HR settings exist
       const settingsCount = await HRSettings.countDocuments();
       if (settingsCount === 0) {
-        await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL' });
+        await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
       }
+      // Seed development mock data for target user
+      await seedDevelopmentData('arnab.talukdar07@gmail.com');
       console.log('MongoDB initialization complete.');
     } catch (e) {
       console.error('Database seeding error:', e.message);
@@ -1053,9 +1057,167 @@ app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), a
   res.json(item);
 });
 
+// Submit Attendance Regularization Request
+app.post('/api/approvals/regularize', authenticateToken, async (req, res) => {
+  const { employeeId, regularizationDate, missedType, requestedClockIn = '09:00 AM', requestedClockOut = '06:00 PM', reason } = req.body;
+
+  let emp = memEmployees.find(e => e.id === employeeId || e.email === req.user.email);
+  if (!emp && mongoose.connection.readyState === 1) {
+    try { emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: req.user.email }] }); } catch (e) {}
+  }
+  if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+  const newApproval = {
+    id: `REG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    employeeId: emp.id,
+    employeeName: emp.name,
+    role: emp.role,
+    avatar: emp.avatar || '',
+    type: 'Attendance Regularization',
+    details: `${missedType || 'Missed Punch'} on ${regularizationDate}`,
+    subDetails: `Shift: ${requestedClockIn} - ${requestedClockOut}`,
+    assignedHrId: emp.assignedHrId || '',
+    assignedHrName: emp.assignedHrName || '',
+    assignedHrEmail: emp.assignedHrEmail || '',
+    regularizationDate,
+    missedType: missedType || 'Missed Clock In',
+    requestedClockIn,
+    requestedClockOut,
+    reason: reason || 'Shift punch regularization',
+    status: 'pending_hr',
+    dateSubmitted: new Date().toISOString().split('T')[0]
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Approval.create(newApproval);
+    }
+  } catch (e) {}
+  memApprovals.unshift(newApproval);
+  saveDiskStore();
+
+  await createNotification({ targetRole: 'HR', recipientId: emp.assignedHrId, title: 'New Regularization Request ⏰', message: `${emp.name} requested regularization for ${regularizationDate}.`, type: 'leave_request' });
+  await createNotification({ targetRole: 'Admin', title: 'Regularization Request Submitted', message: `${emp.name} submitted attendance regularization.`, type: 'leave_request' });
+
+  res.status(201).json(newApproval);
+});
+app.get('/api/hr/settings', authenticateToken, async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const settings = await HRSettings.findOne({ id: 'HR_SETTINGS_GLOBAL' });
+      if (settings) return res.json(settings);
+    }
+  } catch (e) {}
+  res.json({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic', workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] });
+});
+
+app.put('/api/hr/settings', authenticateToken, requireRole('Admin', 'HR'), async (req, res) => {
+  const updates = req.body;
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const updated = await HRSettings.findOneAndUpdate({ id: 'HR_SETTINGS_GLOBAL' }, updates, { new: true, upsert: true });
+      return res.json(updated);
+    }
+  } catch (e) {}
+  res.json({ id: 'HR_SETTINGS_GLOBAL', ...updates });
+});
+
 // ======================================================
 // 6. PAYSLIP GENERATION & PAYROLL
 // ======================================================
+
+// Dynamic Auto Payslip Generation based on Employee Profile & Attendance/LWP
+app.post('/api/payslips/generate-auto', authenticateToken, requireRole('Admin', 'HR'), async (req, res) => {
+  const { employeeId, year = 2026, month = 'May' } = req.body;
+
+  let emp = memEmployees.find(e => e.id === employeeId);
+  if (!emp && mongoose.connection.readyState === 1) {
+    try { emp = await Employee.findOne({ id: employeeId }); } catch (e) {}
+  }
+  if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+  // Get HR Settings
+  let lwpBasis = 'basic';
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const s = await HRSettings.findOne({ id: 'HR_SETTINGS_GLOBAL' });
+      if (s?.lwpDeductionBasis) lwpBasis = s.lwpDeductionBasis;
+    }
+  } catch (e) {}
+
+  // Fetch approvals for employee
+  let approvals = [];
+  try {
+    if (mongoose.connection.readyState === 1) {
+      approvals = await Approval.find({ employeeId: emp.id });
+    } else {
+      approvals = memApprovals.filter(a => a.employeeId === emp.id);
+    }
+  } catch (e) {}
+
+  const calc = calculateSalaryForEmployee(emp, Number(year), month, lwpBasis, approvals);
+
+  const payslipId = `PAY-${year}-${String(month).toUpperCase()}-${emp.id}`;
+  const newPayslip = {
+    id: payslipId,
+    employeeId: emp.id,
+    employeeName: emp.name,
+    employeeEmail: emp.email,
+    department: emp.department,
+    role: emp.role,
+    assignedHrName: emp.assignedHrName || 'HR Manager',
+    payPeriod: calc.payPeriod,
+    month: calc.month,
+    year: calc.year,
+    payDate: new Date().toISOString().split('T')[0],
+    workingDaysInMonth: calc.workingDaysInMonth,
+    attendance: calc.attendance,
+    lwpDays: calc.lwpDays,
+    lwpDeduction: calc.lwpDeduction,
+    station: emp.station || 'KARAMBELI',
+    serialNo: `${Math.floor(10000 + Math.random() * 90000)}`,
+    baseSalary: calc.baseSalary,
+    basic: calc.basic,
+    salaryOfAttendance: calc.salaryOfAttendance,
+    hra: calc.hra,
+    da: calc.da,
+    sa: calc.sa,
+    conveyance: calc.conveyance,
+    otherAllowances: calc.otherAllowances,
+    employerPf: calc.employerPf,
+    totalCtc: calc.totalCtc,
+    employeePf: calc.employeePf,
+    esi: calc.esi,
+    professionalTax: calc.professionalTax,
+    tds: calc.tds,
+    advance: 0,
+    incomeTax: calc.tds,
+    loan: 0,
+    other: 0,
+    totalDeductions: calc.totalDeductions,
+    grossSalary: calc.grossSalary,
+    netPay: calc.netPay,
+    amountInWords: `Rupees ${calc.netPay.toLocaleString('en-IN')} Only`,
+    disbursementStatus: 'pending_disbursement',
+    emailStatus: 'pending'
+  };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Payslip.findOneAndUpdate({ id: payslipId }, newPayslip, { upsert: true, new: true });
+    }
+  } catch (e) {}
+
+  const existingIdx = memPayslips.findIndex(p => p.id === payslipId);
+  if (existingIdx !== -1) memPayslips[existingIdx] = newPayslip;
+  else memPayslips.unshift(newPayslip);
+  saveDiskStore();
+
+  sendPayslipEmail(newPayslip, emp.assignedHrEmail || '').catch(err => console.error('Payslip email error:', err));
+  await createNotification({ targetRole: 'Employee', recipientEmail: emp.email, title: 'Payslip Issued 📄', message: `Your payslip for ${newPayslip.payPeriod} has been generated. Net Pay: ₹${newPayslip.netPay.toLocaleString('en-IN')}.`, type: 'payslip' });
+
+  res.status(201).json({ message: 'Dynamic payslip generated successfully', payslip: newPayslip });
+});
 
 app.post('/api/payslips/generate', authenticateToken, requireRole('Admin', 'HR'), async (req, res) => {
   const { employeeId, payPeriod, workingDaysInMonth, customLwpDays, attendance, esi, advance, incomeTax, loan, other } = req.body;

@@ -7,6 +7,7 @@ const HRSettingsSchema = new mongoose.Schema({
   payrollWindowStart: { type: Number, default: 1, min: 1, max: 7 },
   payrollWindowEnd: { type: Number, default: 7, min: 1, max: 10 },
   payrollCurrency: { type: String, default: '₹' },
+  lwpDeductionBasis: { type: String, enum: ['basic', 'gross', 'custom'], default: 'basic' },
 
   // Working Days Configuration
   workingDays: {

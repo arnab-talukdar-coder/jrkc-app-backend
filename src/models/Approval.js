@@ -18,6 +18,12 @@ const ApprovalSchema = new mongoose.Schema({
   totalDays: { type: Number, default: 1 },
   isLwp: { type: Boolean, default: false },
   lwpDays: { type: Number, default: 0 },
+  // Attendance Regularization fields
+  regularizationDate: String,
+  missedType: String, // Missed Clock In, Missed Clock Out, Incorrect Attendance
+  requestedClockIn: String,
+  requestedClockOut: String,
+  reason: String,
   status: { 
     type: String, 
     enum: ['pending', 'pending_hr', 'pending_admin', 'approved', 'rejected', 'cancelled', 'cancellation_pending'], 

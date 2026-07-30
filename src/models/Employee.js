@@ -89,8 +89,13 @@ const EmployeeSchema = new mongoose.Schema({
     hra: { type: Number, default: 0 },
     da: { type: Number, default: 0 },
     sa: { type: Number, default: 0 },
+    conveyance: { type: Number, default: 0 },
+    otherAllowances: { type: Number, default: 0 },
     employerPf: { type: Number, default: 0 },
-    employeePf: { type: Number, default: 0 }
+    employeePf: { type: Number, default: 0 },
+    esi: { type: Number, default: 0 },
+    professionalTax: { type: Number, default: 0 },
+    tds: { type: Number, default: 0 }
   },
 
   // GPS / Location

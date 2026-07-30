@@ -2,6 +2,10 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import crypto from 'crypto';
+
+if (!globalThis.crypto) {
+  globalThis.crypto = crypto;
+}
 import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
 

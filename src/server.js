@@ -3,6 +3,10 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import crypto from 'crypto';
 
+if (!globalThis.crypto) {
+  globalThis.crypto = crypto;
+}
+
 // Resolve .env from project root (one directory up from src/)
 const __srvFilename = fileURLToPath(import.meta.url);
 const __srvDirname = dirname(__srvFilename);
@@ -55,6 +59,7 @@ import {
 } from './data/initialData.js';
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // ── SECURITY MIDDLEWARE ──

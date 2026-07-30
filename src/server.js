@@ -165,13 +165,14 @@ async function initDatabase() {
       if (settingsCount === 0) {
         await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
       }
-      // Seed development mock data for target user
-      await seedDevelopmentData('arnab.talukdar07@gmail.com');
-      console.log('MongoDB initialization complete.');
     } catch (e) {
       console.error('Database seeding error:', e.message);
     }
   }
+
+  // Seed development mock data for both DB & in-memory disk store
+  await seedDevelopmentData('arnab.talukdar07@gmail.com', memEmployees, memApprovals, memPayslips, saveDiskStore);
+  console.log('Database and Mock Data initialization complete.');
 }
 
 initDatabase();
@@ -383,7 +384,16 @@ app.post('/api/auth/login', async (req, res) => {
   if (user.password) {
     if (user.password.startsWith('$2b$') || user.password.startsWith('$2a$')) {
       passwordMatch = await bcrypt.compare(password, user.password);
+    } else if (user.password === password) {
+      passwordMatch = true;
     }
+  } else {
+    // If account exists and is approved without a set password, set password on first login
+    const hashed = await bcrypt.hash(password, 10);
+    user.password = hashed;
+    passwordMatch = true;
+    try { if (mongoose.connection.readyState === 1) await Employee.findOneAndUpdate({ email: user.email }, { password: hashed }); } catch (e) {}
+    saveDiskStore();
   }
 
   // Check registration request password as fallback
@@ -394,6 +404,8 @@ app.post('/api/auth/login', async (req, res) => {
     if (regReq?.password) {
       if (regReq.password.startsWith('$2b$') || regReq.password.startsWith('$2a$')) {
         passwordMatch = await bcrypt.compare(password, regReq.password);
+      } else if (regReq.password === password) {
+        passwordMatch = true;
       }
       if (passwordMatch) {
         user.password = regReq.password;

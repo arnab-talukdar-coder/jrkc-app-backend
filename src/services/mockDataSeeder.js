@@ -2,83 +2,113 @@
  * Development Mock Data Seeder
  * Populates realistic attendance logs, attendance regularizations, and automatically generated payslips
  * for arnab.talukdar07@gmail.com for May 2026 and June 2026.
+ * Supports both MongoDB and in-memory disk store modes.
  */
 
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import { Employee } from '../models/Employee.js';
 import { Approval } from '../models/Approval.js';
 import { Payslip } from '../models/Payslip.js';
 import { HRSettings } from '../models/HRSettings.js';
 import { calculateSalaryForEmployee } from './payrollService.js';
 
-export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.com') {
+export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.com', memEmployees = [], memApprovals = [], memPayslips = [], saveDiskStore = () => {}) {
   try {
     console.log(`🌱 Seeding development HRMS data for ${targetEmail}...`);
+    const isDbConnected = mongoose.connection.readyState === 1;
 
     // Ensure HR Settings exist with default LWP rule
-    let settings = await HRSettings.findOne({ id: 'HR_SETTINGS_GLOBAL' });
-    if (!settings) {
-      settings = await HRSettings.create({
-        id: 'HR_SETTINGS_GLOBAL',
-        lwpDeductionBasis: 'basic',
-        workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-      });
+    if (isDbConnected) {
+      let settings = await HRSettings.findOne({ id: 'HR_SETTINGS_GLOBAL' });
+      if (!settings) {
+        await HRSettings.create({
+          id: 'HR_SETTINGS_GLOBAL',
+          lwpDeductionBasis: 'basic',
+          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        });
+      }
     }
 
-    // Seed Test Admin Account
+    // 1. Seed Test Admin Account
     const adminEmail = 'admin@jrkc.com';
-    let adminUser = await Employee.findOne({ email: adminEmail });
-    if (!adminUser) {
-      const hashedAdminPassword = await bcrypt.hash('AdminPassword123', 10);
-      adminUser = await Employee.create({
-        id: 'ADM-001',
-        name: 'JRKC Director / Admin',
-        email: adminEmail,
-        password: hashedAdminPassword,
-        role: 'Director',
-        userRole: 'Admin',
-        department: 'Management',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-        status: 'Clocked Out',
-        accountStatus: 'approved',
-        joiningDate: '2024-01-01',
-        phone: '+91 9999999999',
-        ptoDays: 18,
-        sickDays: 10,
-        casualDays: 10,
-        recentLogs: []
-      });
-      console.log(`✅ Test Admin created: ${adminEmail} (Password: AdminPassword123)`);
+    const hashedAdminPassword = await bcrypt.hash('AdminPassword123', 10);
+    const adminData = {
+      id: 'ADM-001',
+      name: 'JRKC Director / Admin',
+      email: adminEmail,
+      password: hashedAdminPassword,
+      role: 'Director',
+      userRole: 'Admin',
+      department: 'Management',
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+      status: 'Clocked Out',
+      accountStatus: 'approved',
+      joiningDate: '2024-01-01',
+      phone: '+91 9999999999',
+      ptoDays: 18,
+      sickDays: 10,
+      casualDays: 10,
+      recentLogs: []
+    };
+
+    if (isDbConnected) {
+      let adminUser = await Employee.findOne({ email: adminEmail });
+      if (!adminUser) {
+        await Employee.create(adminData);
+        console.log(`✅ Test Admin created in DB: ${adminEmail} (Password: AdminPassword123)`);
+      } else if (!adminUser.password) {
+        adminUser.password = hashedAdminPassword;
+        await adminUser.save();
+      }
+    }
+    let memAdmin = memEmployees.find(e => e.email?.toLowerCase() === adminEmail);
+    if (!memAdmin) {
+      memEmployees.unshift(adminData);
+    } else if (!memAdmin.password) {
+      memAdmin.password = hashedAdminPassword;
     }
 
-    // Seed Test HR Manager Account
+    // 2. Seed Test HR Manager Account
     const hrEmail = 'hr@jrkc.com';
-    let hrUser = await Employee.findOne({ email: hrEmail });
-    if (!hrUser) {
-      const hashedHrPassword = await bcrypt.hash('HrPassword123', 10);
-      hrUser = await Employee.create({
-        id: 'HR-001',
-        name: 'JRKC HR Manager',
-        email: hrEmail,
-        password: hashedHrPassword,
-        role: 'HR Manager',
-        userRole: 'HR',
-        department: 'Human Resources',
-        avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-        status: 'Clocked Out',
-        accountStatus: 'approved',
-        joiningDate: '2024-01-15',
-        phone: '+91 9888888888',
-        ptoDays: 18,
-        sickDays: 10,
-        casualDays: 10,
-        recentLogs: []
-      });
-      console.log(`✅ Test HR Manager created: ${hrEmail} (Password: HrPassword123)`);
+    const hashedHrPassword = await bcrypt.hash('HrPassword123', 10);
+    const hrData = {
+      id: 'HR-001',
+      name: 'JRKC HR Manager',
+      email: hrEmail,
+      password: hashedHrPassword,
+      role: 'HR Manager',
+      userRole: 'HR',
+      department: 'Human Resources',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+      status: 'Clocked Out',
+      accountStatus: 'approved',
+      joiningDate: '2024-01-15',
+      phone: '+91 9888888888',
+      ptoDays: 18,
+      sickDays: 10,
+      casualDays: 10,
+      recentLogs: []
+    };
+
+    if (isDbConnected) {
+      let hrUser = await Employee.findOne({ email: hrEmail });
+      if (!hrUser) {
+        await Employee.create(hrData);
+        console.log(`✅ Test HR Manager created in DB: ${hrEmail} (Password: HrPassword123)`);
+      } else if (!hrUser.password) {
+        hrUser.password = hashedHrPassword;
+        await hrUser.save();
+      }
+    }
+    let memHr = memEmployees.find(e => e.email?.toLowerCase() === hrEmail);
+    if (!memHr) {
+      memEmployees.unshift(hrData);
+    } else if (!memHr.password) {
+      memHr.password = hashedHrPassword;
     }
 
-    // Find or create target employee
-    let employee = await Employee.findOne({ email: targetEmail.toLowerCase() });
+    // 3. Find or create target employee
     const salaryStruct = {
       basic: 30000,
       hra: 12000,
@@ -93,39 +123,57 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
       tds: 1500
     };
 
-    if (!employee) {
-      employee = await Employee.create({
-        id: 'EMP-007',
-        name: 'Arnab Talukdar',
-        email: targetEmail.toLowerCase(),
-        role: 'Senior Project Engineer',
-        userRole: 'Employee',
-        department: 'Engineering',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        status: 'Clocked Out',
-        accountStatus: 'approved',
-        joiningDate: '2025-01-15',
-        phone: '+91 9876543210',
-        station: 'KARAMBELI',
-        baseSalary: 30000,
-        allowances: 25000,
-        taxDeductions: 1700,
-        salaryStructure: salaryStruct,
-        ptoDays: 18,
-        sickDays: 10,
-        casualDays: 10,
-        recentLogs: []
-      });
+    const targetEmpPassword = await bcrypt.hash('ArnabPassword123', 10);
+    const empData = {
+      id: 'EMP-007',
+      name: 'Arnab Talukdar',
+      email: targetEmail.toLowerCase(),
+      password: targetEmpPassword,
+      role: 'Senior Project Engineer',
+      userRole: 'Employee',
+      department: 'Engineering',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      status: 'Clocked Out',
+      accountStatus: 'approved',
+      joiningDate: '2025-01-15',
+      phone: '+91 9876543210',
+      station: 'KARAMBELI',
+      baseSalary: 30000,
+      allowances: 25000,
+      taxDeductions: 1700,
+      salaryStructure: salaryStruct,
+      ptoDays: 18,
+      sickDays: 10,
+      casualDays: 10,
+      recentLogs: []
+    };
+
+    let employee = null;
+    if (isDbConnected) {
+      employee = await Employee.findOne({ email: targetEmail.toLowerCase() });
+      if (!employee) {
+        employee = await Employee.create(empData);
+      } else {
+        employee.salaryStructure = salaryStruct;
+        employee.baseSalary = 30000;
+        if (!employee.password) employee.password = targetEmpPassword;
+        await employee.save();
+      }
+    }
+
+    let memTarget = memEmployees.find(e => e.email?.toLowerCase() === targetEmail.toLowerCase());
+    if (!memTarget) {
+      memEmployees.unshift(empData);
+      memTarget = empData;
     } else {
-      // Update employee salary structure to ensure stored components exist
-      employee.salaryStructure = salaryStruct;
-      employee.baseSalary = 30000;
-      await employee.save();
+      memTarget.salaryStructure = salaryStruct;
+      memTarget.baseSalary = 30000;
+      if (!memTarget.password) memTarget.password = targetEmpPassword;
     }
 
     // ── MAY 2026 MOCK DATA (100% Attendance Mon-Sat, 0 LWP) ──
     const mayLogs = [];
-    const daysInMay = 31; // May 2026
+    const daysInMay = 31;
     for (let day = 1; day <= daysInMay; day++) {
       const dateStr = `2026-05-${String(day).padStart(2, '0')}`;
       const dateObj = new Date(2026, 4, day);
@@ -150,7 +198,7 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
 
     // ── JUNE 2026 MOCK DATA (With missed punches & regularizations) ──
     const juneLogs = [];
-    const daysInJune = 30; // June 2026
+    const daysInJune = 30;
     const missedDates = {
       8: 'missed_out',   // June 8: Missed Clock Out -> Regularized & Approved
       15: 'missed_in',   // June 15: Missed Clock In -> Regularized & Approved
@@ -216,20 +264,31 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
       }
     }
 
-    // Merge recent logs into employee record
-    const existingLogs = employee.recentLogs || [];
-    const otherLogs = existingLogs.filter(l => !l.date || (!l.date.startsWith('2026-05') && !l.date.startsWith('2026-06')));
-    employee.recentLogs = [...otherLogs, ...mayLogs, ...juneLogs];
-    await employee.save();
+    if (employee && isDbConnected) {
+      const existingLogs = employee.recentLogs || [];
+      const otherLogs = existingLogs.filter(l => !l.date || (!l.date.startsWith('2026-05') && !l.date.startsWith('2026-06')));
+      employee.recentLogs = [...otherLogs, ...mayLogs, ...juneLogs];
+      await employee.save();
+    }
+    if (memTarget) {
+      const existingLogs = memTarget.recentLogs || [];
+      const otherLogs = existingLogs.filter(l => !l.date || (!l.date.startsWith('2026-05') && !l.date.startsWith('2026-06')));
+      memTarget.recentLogs = [...otherLogs, ...mayLogs, ...juneLogs];
+    }
 
     // ── SEED ATTENDANCE REGULARIZATION APPROVALS ──
+    const targetEmpId = employee?.id || memTarget?.id || 'EMP-007';
+    const targetEmpName = employee?.name || memTarget?.name || 'Arnab Talukdar';
+    const targetEmpRole = employee?.role || memTarget?.role || 'Senior Project Engineer';
+    const targetEmpAvatar = employee?.avatar || memTarget?.avatar || '';
+
     const regApprovals = [
       {
-        id: `REG-JUN-08-${employee.id}`,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        role: employee.role,
-        avatar: employee.avatar,
+        id: `REG-JUN-08-${targetEmpId}`,
+        employeeId: targetEmpId,
+        employeeName: targetEmpName,
+        role: targetEmpRole,
+        avatar: targetEmpAvatar,
         type: 'Attendance Regularization',
         details: 'Missed Clock Out on 2026-06-08',
         subDetails: 'System glitch during site exit. Verified site departure at 06:00 PM.',
@@ -246,11 +305,11 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
         dateSubmitted: '2026-06-08'
       },
       {
-        id: `REG-JUN-15-${employee.id}`,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        role: employee.role,
-        avatar: employee.avatar,
+        id: `REG-JUN-15-${targetEmpId}`,
+        employeeId: targetEmpId,
+        employeeName: targetEmpName,
+        role: targetEmpRole,
+        avatar: targetEmpAvatar,
         type: 'Attendance Regularization',
         details: 'Missed Clock In on 2026-06-15',
         subDetails: 'Train delay at Karambeli station. Arrived on site at 09:15 AM.',
@@ -267,11 +326,11 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
         dateSubmitted: '2026-06-15'
       },
       {
-        id: `REG-JUN-22-${employee.id}`,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        role: employee.role,
-        avatar: employee.avatar,
+        id: `REG-JUN-22-${targetEmpId}`,
+        employeeId: targetEmpId,
+        employeeName: targetEmpName,
+        role: targetEmpRole,
+        avatar: targetEmpAvatar,
         type: 'Attendance Regularization',
         details: 'Missed Clock In on 2026-06-22',
         subDetails: 'Unannounced absence during morning shift.',
@@ -290,21 +349,24 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
     ];
 
     for (const app of regApprovals) {
-      await Approval.findOneAndUpdate({ id: app.id }, app, { upsert: true, new: true });
+      if (isDbConnected) {
+        await Approval.findOneAndUpdate({ id: app.id }, app, { upsert: true, new: true });
+      }
+      const existingIdx = memApprovals.findIndex(a => a.id === app.id);
+      if (existingIdx !== -1) memApprovals[existingIdx] = app;
+      else memApprovals.unshift(app);
     }
 
-    // Fetch all current approvals for accurate payroll computation
-    const allApprovals = await Approval.find({ employeeId: employee.id });
-
-    // ── GENERATE MAY 2026 PAYSLIP (0 LWP) ──
-    const mayPayroll = calculateSalaryForEmployee(employee, 2026, 5, settings.lwpDeductionBasis, allApprovals, 0);
+    // ── GENERATE MAY 2026 & JUNE 2026 PAYSLIPS ──
+    const empForCalc = employee || memTarget;
+    const mayPayroll = calculateSalaryForEmployee(empForCalc, 2026, 5, 'basic', regApprovals, 0);
     const mayPayslipData = {
-      id: `PAY-2026-05-${employee.id}`,
-      employeeId: employee.id,
-      employeeName: employee.name,
-      employeeEmail: employee.email,
-      department: employee.department,
-      role: employee.role,
+      id: `PAY-2026-05-${targetEmpId}`,
+      employeeId: targetEmpId,
+      employeeName: targetEmpName,
+      employeeEmail: targetEmail.toLowerCase(),
+      department: empForCalc.department,
+      role: empForCalc.role,
       assignedHrName: 'HR Manager',
       payPeriod: 'May 2026',
       month: 'May',
@@ -342,17 +404,14 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
       emailStatus: 'sent'
     };
 
-    await Payslip.findOneAndUpdate({ id: mayPayslipData.id }, mayPayslipData, { upsert: true, new: true });
-
-    // ── GENERATE JUNE 2026 PAYSLIP (Calculated LWP = 2 Days) ──
-    const junePayroll = calculateSalaryForEmployee(employee, 2026, 6, settings.lwpDeductionBasis, allApprovals, 2);
+    const junePayroll = calculateSalaryForEmployee(empForCalc, 2026, 6, 'basic', regApprovals, 2);
     const junePayslipData = {
-      id: `PAY-2026-06-${employee.id}`,
-      employeeId: employee.id,
-      employeeName: employee.name,
-      employeeEmail: employee.email,
-      department: employee.department,
-      role: employee.role,
+      id: `PAY-2026-06-${targetEmpId}`,
+      employeeId: targetEmpId,
+      employeeName: targetEmpName,
+      employeeEmail: targetEmail.toLowerCase(),
+      department: empForCalc.department,
+      role: empForCalc.role,
       assignedHrName: 'HR Manager',
       payPeriod: 'June 2026',
       month: 'June',
@@ -390,19 +449,24 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
       emailStatus: 'pending'
     };
 
-    await Payslip.findOneAndUpdate({ id: junePayslipData.id }, junePayslipData, { upsert: true, new: true });
+    if (isDbConnected) {
+      await Payslip.findOneAndUpdate({ id: mayPayslipData.id }, mayPayslipData, { upsert: true, new: true });
+      await Payslip.findOneAndUpdate({ id: junePayslipData.id }, junePayslipData, { upsert: true, new: true });
+    }
+
+    const mayIdx = memPayslips.findIndex(p => p.id === mayPayslipData.id);
+    if (mayIdx !== -1) memPayslips[mayIdx] = mayPayslipData;
+    else memPayslips.unshift(mayPayslipData);
+
+    const juneIdx = memPayslips.findIndex(p => p.id === junePayslipData.id);
+    if (juneIdx !== -1) memPayslips[juneIdx] = junePayslipData;
+    else memPayslips.unshift(junePayslipData);
+
+    saveDiskStore();
 
     console.log(`✅ Development mock data seeded successfully for ${targetEmail}!`);
-    console.log(`📊 May 2026 Net Salary: ₹${mayPayroll.netPay} (0 LWP)`);
-    console.log(`📊 June 2026 Net Salary: ₹${junePayroll.netPay} (${junePayroll.lwpDays} LWP Days, LWP Deduction: ₹${junePayroll.lwpDeduction})`);
-
-    return {
-      success: true,
-      mayPayslip: mayPayslipData,
-      junePayslip: junePayslipData
-    };
+    return { success: true };
   } catch (err) {
     console.error(`❌ Mock data seeding error:`, err.message);
-    throw err;
   }
 }

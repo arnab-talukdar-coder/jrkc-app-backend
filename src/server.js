@@ -1,4 +1,17 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+// Resolve .env from project root (one directory up from src/)
+const __srvFilename = fileURLToPath(import.meta.url);
+const __srvDirname = dirname(__srvFilename);
+const envPath = resolve(__srvDirname, '..', '.env');
+dotenv.config({ path: envPath });
+
+console.log(`🔧 Server: Loaded .env from ${envPath}`);
+console.log(`🔧 GMAIL_USER: ${process.env.GMAIL_USER || '❌ NOT SET'}`);
+console.log(`🔧 JWT_SECRET: ${process.env.JWT_SECRET ? '✅ loaded' : '⚠️ using default'}`);
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';

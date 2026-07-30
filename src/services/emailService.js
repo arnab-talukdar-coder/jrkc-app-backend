@@ -1,6 +1,19 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
+
+// Resolve .env from project root (two directories up from src/services/)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const envPath = resolve(__dirname, '..', '..', '.env');
+dotenv.config({ path: envPath });
+
+// Startup diagnostics
+console.log(`📧 Email Service: Loading .env from ${envPath}`);
+console.log(`📧 GMAIL_USER loaded: ${process.env.GMAIL_USER ? process.env.GMAIL_USER : '❌ NOT SET'}`);
+console.log(`📧 GMAIL_APP_PASSWORD loaded: ${process.env.GMAIL_APP_PASSWORD ? '✅ (hidden)' : '❌ NOT SET'}`);
 
 // Helper to create transport
 let transporter = null;
@@ -35,7 +48,6 @@ async function getTransporter() {
     }
   } else {
     // Only use fallback mode if no credentials are provided at all.
-    // If they provided credentials but connection fails, it will fail loudly.
     console.warn('⚠️ WARNING: No GMAIL_USER or SMTP_USER provided in environment. Using console mock email transport.');
     transporter = {
       sendMail: async (mailOptions) => {
@@ -52,13 +64,16 @@ async function getTransporter() {
   }
 
   // Verify connection configuration (only if it's a real transporter)
+  // NOTE: Do NOT throw on verify failure — some SMTP servers reject verify
+  // but still accept mail. The transporter should still be usable.
   if (transporter && typeof transporter.verify === 'function') {
     try {
       await transporter.verify();
       console.log('✅ SMTP Server Connection Verified Successfully!');
     } catch (error) {
-      console.error('❌ SMTP Server Connection Error:', error);
-      throw new Error(`Email configuration failed: ${error.message}`);
+      console.error('⚠️ SMTP Server Verify Failed (emails may still work):', error.message);
+      console.error('   Full error:', error);
+      // Do NOT throw — let the transporter try to send anyway
     }
   }
 

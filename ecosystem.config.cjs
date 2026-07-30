@@ -1,8 +1,11 @@
+const path = require('path');
+
 module.exports = {
   apps: [
     {
       name: 'jrkc-backend-prod',
       script: './src/server.js',
+      cwd: __dirname, // Critical: ensures dotenv resolves .env from project root
       instances: 1,
       autorestart: true,
       watch: false,
@@ -19,6 +22,7 @@ module.exports = {
     {
       name: 'jrkc-backend-test',
       script: './src/server.js',
+      cwd: __dirname, // Critical: ensures dotenv resolves .env from project root
       instances: 1,
       autorestart: true,
       watch: false,

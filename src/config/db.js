@@ -1,5 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 import mongoose from 'mongoose';
+
+// Resolve .env from project root (two directories up from src/config/)
+const __dbFilename = fileURLToPath(import.meta.url);
+const __dbDirname = dirname(__dbFilename);
+dotenv.config({ path: resolve(__dbDirname, '..', '..', '.env') });
 
 export async function connectDB() {
   try {

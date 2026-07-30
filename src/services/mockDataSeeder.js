@@ -4,6 +4,7 @@
  * for arnab.talukdar07@gmail.com for May 2026 and June 2026.
  */
 
+import bcrypt from 'bcryptjs';
 import { Employee } from '../models/Employee.js';
 import { Approval } from '../models/Approval.js';
 import { Payslip } from '../models/Payslip.js';
@@ -22,6 +23,32 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
         lwpDeductionBasis: 'basic',
         workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
       });
+    }
+
+    // Seed Test Admin Account
+    const adminEmail = 'admin@jrkc.com';
+    let adminUser = await Employee.findOne({ email: adminEmail });
+    if (!adminUser) {
+      const hashedAdminPassword = await bcrypt.hash('AdminPassword123', 10);
+      adminUser = await Employee.create({
+        id: 'ADM-001',
+        name: 'JRKC Director / Admin',
+        email: adminEmail,
+        password: hashedAdminPassword,
+        role: 'Director',
+        userRole: 'Admin',
+        department: 'Management',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+        status: 'Clocked Out',
+        accountStatus: 'approved',
+        joiningDate: '2024-01-01',
+        phone: '+91 9999999999',
+        ptoDays: 18,
+        sickDays: 10,
+        casualDays: 10,
+        recentLogs: []
+      });
+      console.log(`✅ Test Admin created: ${adminEmail} (Password: AdminPassword123)`);
     }
 
     // Find or create target employee

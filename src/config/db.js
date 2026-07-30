@@ -3,23 +3,21 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import mongoose from 'mongoose';
 
-// Resolve .env from project root (two directories up from src/config/)
-const __dbFilename = fileURLToPath(import.meta.url);
-const __dbDirname = dirname(__dbFilename);
-dotenv.config({ path: resolve(__dbDirname, '..', '..', '.env'), override: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: resolve(__dirname, '..', '..', '.env'), override: true });
 
 export async function connectDB() {
-  try {
-    const env = process.env.NODE_ENV || 'development';
-    const defaultUri = `mongodb://127.0.0.1:27017/jrkc_hr_${env}`;
-    const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL || defaultUri;
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI ||
+    `mongodb://127.0.0.1:27017/jrkc_hrms_v2`;
 
-    console.log(`Connecting to MongoDB (${env} environment)...`);
-    const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 2000 // 2s timeout for local development fallback
-    });
-    console.log(`MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
-  } catch (error) {
-    console.log(`MongoDB connection not active (${error.message}). Operating in-memory fallback mode.`);
+  console.log(`🔗 Connecting to MongoDB...`);
+  try {
+    const conn = await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
+    return true;
+  } catch (err) {
+    console.warn(`⚠️  MongoDB unavailable (${err.message}). In-memory mode active.`);
+    return false;
   }
 }

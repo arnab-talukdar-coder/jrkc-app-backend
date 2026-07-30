@@ -3,6 +3,8 @@ name: Deploy Backend to VPS
 on:
   push:
     branches:
+      - dev-prod-v2
+      - dev-test-v2
       - dev-prod
       - dev-test
       - main
@@ -21,16 +23,30 @@ jobs:
       - name: Determine Target Environment & Directory
         id: env-spec
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/dev-prod" ] || [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+          if [ "${{ github.ref }}" = "refs/heads/dev-prod-v2" ]; then
+            echo "ENV_NAME=production" >> $GITHUB_OUTPUT
+            echo "PM2_NAME=jrkc-v2-backend-prod" >> $GITHUB_OUTPUT
+            echo "TARGET_PATH=${{ secrets.VPS_V2_PROD_PATH || '/var/www/jrkc-v2-backend-prod' }}" >> $GITHUB_OUTPUT
+            echo "HEALTH_PORT=5002" >> $GITHUB_OUTPUT
+            echo "DB_NAME=jrkc_hrms_v2_prod" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/dev-test-v2" ]; then
+            echo "ENV_NAME=test" >> $GITHUB_OUTPUT
+            echo "PM2_NAME=jrkc-v2-backend-test" >> $GITHUB_OUTPUT
+            echo "TARGET_PATH=${{ secrets.VPS_V2_TEST_PATH || '/var/www/jrkc-v2-backend-test' }}" >> $GITHUB_OUTPUT
+            echo "HEALTH_PORT=5003" >> $GITHUB_OUTPUT
+            echo "DB_NAME=jrkc_hrms_v2_test" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/dev-prod" ] || [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
             echo "ENV_NAME=production" >> $GITHUB_OUTPUT
             echo "PM2_NAME=jrkc-backend-prod" >> $GITHUB_OUTPUT
             echo "TARGET_PATH=${{ secrets.VPS_PROD_PATH || '/var/www/jrkc-backend-prod' }}" >> $GITHUB_OUTPUT
             echo "HEALTH_PORT=5000" >> $GITHUB_OUTPUT
+            echo "DB_NAME=jrkc_hr_production" >> $GITHUB_OUTPUT
           else
             echo "ENV_NAME=test" >> $GITHUB_OUTPUT
             echo "PM2_NAME=jrkc-backend-test" >> $GITHUB_OUTPUT
             echo "TARGET_PATH=${{ secrets.VPS_TEST_PATH || '/var/www/jrkc-backend-test' }}" >> $GITHUB_OUTPUT
             echo "HEALTH_PORT=5001" >> $GITHUB_OUTPUT
+            echo "DB_NAME=jrkc_hr_test" >> $GITHUB_OUTPUT
           fi
 
       - name: Execute Remote Deployment via SSH
@@ -45,19 +61,13 @@ jobs:
             PM2_APP="${{ steps.env-spec.outputs.PM2_NAME }}"
             ENV_MODE="${{ steps.env-spec.outputs.ENV_NAME }}"
             PORT_NUM="${{ steps.env-spec.outputs.HEALTH_PORT }}"
+            DB_NAME="${{ steps.env-spec.outputs.DB_NAME }}"
 
             echo "🚀 Deploying $ENV_MODE environment to $TARGET_DIR from branch ${{ github.ref_name }}..."
 
             # Ensure target directory exists
             mkdir -p $TARGET_DIR
             cd $TARGET_DIR
-
-            # Clean up nested subfolder if git clone created one previously
-            if [ -d "jrkc-app-backend" ]; then
-              cp -r jrkc-app-backend/* . 2>/dev/null || true
-              cp -r jrkc-app-backend/.* . 2>/dev/null || true
-              rm -rf jrkc-app-backend
-            fi
 
             # Handle Git Repo Initialization or Pull
             if [ -d ".git" ]; then
@@ -75,7 +85,7 @@ jobs:
             # Ensure correct .env file exists with strict PORT configuration
             echo "PORT=$PORT_NUM" > .env
             echo "NODE_ENV=$ENV_MODE" >> .env
-            echo "MONGODB_URI=mongodb://localhost:27017/jrkc_hr_$ENV_MODE" >> .env
+            echo "MONGODB_URI=mongodb://127.0.0.1:27017/$DB_NAME" >> .env
 
             # Install production dependencies
             npm install --omit=dev

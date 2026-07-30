@@ -1,25 +1,29 @@
 {
-  "name": "jrkc-app-backend",
-  "version": "1.0.0",
-  "description": "Node.js Express REST API backend for JRKC HR & Employee Management Application",
-  "main": "src/server.js",
+  "name": "jrkc-hrms-v2-backend",
+  "version": "2.0.0",
+  "description": "JRKC Rail HRMS v2 — Production Backend",
   "type": "module",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "start:test": "node -e \"process.env.NODE_ENV='test'; process.env.PORT='5001'; import('./src/server.js')\"",
-    "dev": "node --watch src/server.js",
-    "dev:test": "node --watch -e \"process.env.NODE_ENV='test'; process.env.PORT='5001'; import('./src/server.js')\""
+    "dev": "nodemon src/server.js",
+    "test": "jest"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.6.1",
-    "helmet": "^8.3.0",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.8.1",
-    "nodemailer": "^9.0.3",
-    "pdfkit": "^0.19.1"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "express-validator": "^7.1.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.4.4",
+    "nodemailer": "^6.9.13",
+    "morgan": "^1.10.0",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }

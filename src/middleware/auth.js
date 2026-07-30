@@ -1,73 +1,65 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import { User } from '../models/User.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'jrkc-hrms-secret-2026';
+const JWT_SECRET = process.env.JWT_SECRET || 'jrkc-hrms-v2-secret';
 
-/**
- * JWT Authentication Middleware
- * Verifies Bearer token from Authorization header
- */
-export function authenticateToken(req, res, next) {
+// ── Validate email format ──────────────────────────────────────────────────
+export function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).toLowerCase());
+}
+
+// ── Sanitize string input ──────────────────────────────────────────────────
+export function sanitizeString(str) {
+  if (!str) return '';
+  return String(str).trim().replace(/[<>]/g, '');
+}
+
+// ── Verify JWT and attach user to req ─────────────────────────────────────
+export async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Authentication required. Please log in.' });
+    return res.status(401).json({ error: 'Authentication required.' });
   }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { id, email, userRole, name }
+    // Attach lightweight payload — controllers can fetch full user if needed
+    req.user = decoded;
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    }
-    return res.status(403).json({ error: 'Invalid authentication token.' });
+    return res.status(403).json({ error: 'Invalid or expired token.' });
   }
 }
 
-/**
- * Role-Based Access Control Middleware
- * Usage: requireRole('Admin') or requireRole('Admin', 'HR')
- */
-export function requireRole(...allowedRoles) {
+// ── Optional auth (doesn't block unauthenticated requests) ────────────────
+export async function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (token) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (_) { /* ignore */ }
+  }
+  next();
+}
+
+// ── RBAC: require one of the specified roles ───────────────────────────────
+export function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Authentication required.' });
-    }
-    if (!allowedRoles.includes(req.user.userRole)) {
-      return res.status(403).json({ error: `Access denied. Required role: ${allowedRoles.join(' or ')}.` });
+    if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
+    if (!roles.includes(req.user.userRole)) {
+      return res.status(403).json({
+        error: `Access denied. Required role: ${roles.join(' or ')}.`
+      });
     }
     next();
   };
 }
 
-/**
- * Optional auth — sets req.user if token is valid, but doesn't block if missing
- */
-export function optionalAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
-
-  if (token) {
-    try {
-      req.user = jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      // Token invalid, proceed without user
-    }
-  }
-  next();
-}
-
-/**
- * Input validation helpers
- */
-export function validateEmail(email) {
-  if (!email || typeof email !== 'string') return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-}
-
-export function sanitizeString(str) {
-  if (!str || typeof str !== 'string') return '';
-  return str.replace(/[<>]/g, '').trim();
+// ── Generate JWT ───────────────────────────────────────────────────────────
+export function generateToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
 }

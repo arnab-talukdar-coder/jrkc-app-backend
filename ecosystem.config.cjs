@@ -12,19 +12,7 @@ module.exports = {
       max_memory_restart: '500M',
       env: {
         NODE_ENV: 'production',
-        PORT: 5000,
-        GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
-        GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
-        ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
-        SENDER_NAME: 'JRKC Rail Infra'
-      },
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 5000,
-        GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
-        GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
-        ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
-        SENDER_NAME: 'JRKC Rail Infra'
+        PORT: 5000
       }
     },
     {
@@ -37,19 +25,33 @@ module.exports = {
       max_memory_restart: '300M',
       env: {
         NODE_ENV: 'test',
-        PORT: 5001,
-        GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
-        GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
-        ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
-        SENDER_NAME: 'JRKC Rail Infra'
-      },
-      env_test: {
+        PORT: 5001
+      }
+    },
+    {
+      name: 'jrkc-v2-backend-prod',
+      script: './src/server.js',
+      cwd: __dirname,
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 5002
+      }
+    },
+    {
+      name: 'jrkc-v2-backend-test',
+      script: './src/server.js',
+      cwd: __dirname,
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '300M',
+      env: {
         NODE_ENV: 'test',
-        PORT: 5001,
-        GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
-        GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
-        ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
-        SENDER_NAME: 'JRKC Rail Infra'
+        PORT: 5003
       }
     }
   ]

@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import crypto from 'crypto';
 
 // Resolve .env from project root (one directory up from src/)
 const __srvFilename = fileURLToPath(import.meta.url);

@@ -82,10 +82,17 @@ jobs:
               git clone -b ${{ github.ref_name }} https://github.com/${{ github.repository }}.git .
             fi
 
-            # Ensure correct .env file exists with strict PORT configuration
+            # Ensure correct .env file exists with strict PORT and app secrets configuration
             echo "PORT=$PORT_NUM" > .env
             echo "NODE_ENV=$ENV_MODE" >> .env
             echo "MONGODB_URI=mongodb://127.0.0.1:27017/$DB_NAME" >> .env
+            echo "JWT_SECRET=jrkc-hrms-v2-production-secret-2026" >> .env
+            echo "JWT_EXPIRES_IN=7d" >> .env
+            echo "DIRECTOR_REGISTRATION_KEY=JRKC-DIRECTOR-2026" >> .env
+            echo "HR_REGISTRATION_KEY=JRKC-HR-2026" >> .env
+            echo "GMAIL_USER=gameboyarnab.talukdar1999@gmail.com" >> .env
+            echo "GMAIL_APP_PASSWORD=crybohbblfigqcqy" >> .env
+            echo "SENDER_NAME=JRKC Rail Infra HRMS" >> .env
 
             # Install production dependencies
             npm install --omit=dev

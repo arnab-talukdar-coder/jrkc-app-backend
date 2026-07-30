@@ -51,6 +51,32 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
       console.log(`✅ Test Admin created: ${adminEmail} (Password: AdminPassword123)`);
     }
 
+    // Seed Test HR Manager Account
+    const hrEmail = 'hr@jrkc.com';
+    let hrUser = await Employee.findOne({ email: hrEmail });
+    if (!hrUser) {
+      const hashedHrPassword = await bcrypt.hash('HrPassword123', 10);
+      hrUser = await Employee.create({
+        id: 'HR-001',
+        name: 'JRKC HR Manager',
+        email: hrEmail,
+        password: hashedHrPassword,
+        role: 'HR Manager',
+        userRole: 'HR',
+        department: 'Human Resources',
+        avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+        status: 'Clocked Out',
+        accountStatus: 'approved',
+        joiningDate: '2024-01-15',
+        phone: '+91 9888888888',
+        ptoDays: 18,
+        sickDays: 10,
+        casualDays: 10,
+        recentLogs: []
+      });
+      console.log(`✅ Test HR Manager created: ${hrEmail} (Password: HrPassword123)`);
+    }
+
     // Find or create target employee
     let employee = await Employee.findOne({ email: targetEmail.toLowerCase() });
     const salaryStruct = {

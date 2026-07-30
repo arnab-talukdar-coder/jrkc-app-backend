@@ -445,13 +445,59 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
       grossSalary: junePayroll.grossSalary,
       netPay: junePayroll.netPay,
       amountInWords: `Rupees ${junePayroll.netPay.toLocaleString('en-IN')} Only`,
-      disbursementStatus: 'pending_disbursement',
-      emailStatus: 'pending'
+      disbursementStatus: 'dispatched',
+      emailStatus: 'sent'
+    };
+
+    const julyPayroll = calculateSalaryForEmployee(empForCalc, 2026, 7, 'basic', regApprovals, 0);
+    const julyPayslipData = {
+      id: `PAY-2026-07-${targetEmpId}`,
+      employeeId: targetEmpId,
+      employeeName: targetEmpName,
+      employeeEmail: targetEmail.toLowerCase(),
+      department: empForCalc.department,
+      role: empForCalc.role,
+      assignedHrName: 'HR Manager',
+      payPeriod: 'July 2026',
+      month: 'July',
+      year: 2026,
+      payDate: '2026-07-31',
+      workingDaysInMonth: julyPayroll.workingDaysInMonth,
+      attendance: julyPayroll.attendance,
+      lwpDays: julyPayroll.lwpDays,
+      lwpDeduction: julyPayroll.lwpDeduction,
+      station: 'KARAMBELI',
+      serialNo: '27646',
+      baseSalary: julyPayroll.baseSalary,
+      basic: julyPayroll.basic,
+      salaryOfAttendance: julyPayroll.salaryOfAttendance,
+      hra: julyPayroll.hra,
+      da: julyPayroll.da,
+      sa: julyPayroll.sa,
+      conveyance: julyPayroll.conveyance,
+      otherAllowances: julyPayroll.otherAllowances,
+      employerPf: julyPayroll.employerPf,
+      totalCtc: julyPayroll.totalCtc,
+      employeePf: julyPayroll.employeePf,
+      esi: julyPayroll.esi,
+      professionalTax: julyPayroll.professionalTax,
+      tds: julyPayroll.tds,
+      advance: 0,
+      incomeTax: julyPayroll.tds,
+      loan: 0,
+      other: 0,
+      totalDeductions: julyPayroll.totalDeductions,
+      grossSalary: julyPayroll.grossSalary,
+      netPay: julyPayroll.netPay,
+      amountInWords: `Rupees ${julyPayroll.netPay.toLocaleString('en-IN')} Only`,
+      disbursementStatus: 'dispatched',
+      emailStatus: 'sent'
     };
 
     if (isDbConnected) {
       await Payslip.findOneAndUpdate({ id: mayPayslipData.id }, mayPayslipData, { upsert: true, new: true });
       await Payslip.findOneAndUpdate({ id: junePayslipData.id }, junePayslipData, { upsert: true, new: true });
+      await Payslip.findOneAndUpdate({ id: julyPayslipData.id }, julyPayslipData, { upsert: true, new: true });
     }
 
     const mayIdx = memPayslips.findIndex(p => p.id === mayPayslipData.id);
@@ -461,6 +507,10 @@ export async function seedDevelopmentData(targetEmail = 'arnab.talukdar07@gmail.
     const juneIdx = memPayslips.findIndex(p => p.id === junePayslipData.id);
     if (juneIdx !== -1) memPayslips[juneIdx] = junePayslipData;
     else memPayslips.unshift(junePayslipData);
+
+    const julyIdx = memPayslips.findIndex(p => p.id === julyPayslipData.id);
+    if (julyIdx !== -1) memPayslips[julyIdx] = julyPayslipData;
+    else memPayslips.unshift(julyPayslipData);
 
     saveDiskStore();
 

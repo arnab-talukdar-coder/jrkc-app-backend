@@ -61,12 +61,15 @@ app.use('/api/v2/auth', authLimiter);
 app.use('/api/v2', apiLimiter);
 
 // ── Health ────────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({
+const healthHandler = (_, res) => res.json({
   status: 'ok',
   version: '2.0.0',
   timestamp: new Date().toISOString(),
   service: 'JRKC Rail HRMS v2'
-}));
+});
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+app.get('/api/v2/health', healthHandler);
 
 // ── API Routes ────────────────────────────────────────────────────────────
 app.use('/api/v2/auth',          authRoutes);

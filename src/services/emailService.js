@@ -26,8 +26,8 @@ let transporter = null;
 async function getTransporter() {
   if (transporter) return transporter;
 
-  const emailUser = process.env.GMAIL_USER || process.env.SMTP_USER;
-  const emailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
+  const emailUser = process.env.GMAIL_USER || process.env.SMTP_USER || 'gameboyarnab.talukdar1999@gmail.com';
+  const emailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || 'crybohbblfigqcqy';
   const smtpHost = process.env.SMTP_HOST;
 
   if (emailUser && emailPass) {

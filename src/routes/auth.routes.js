@@ -46,6 +46,44 @@ router.post('/register', async (req, res) => {
       }
     }
 
+    // Auto-approve Director and HR roles since valid secret registration key was verified
+    if (normalizedRole === 'Director' || normalizedRole === 'HR') {
+      const idCardNo = `JRKCRIPL/${normalizedRole.toUpperCase().substring(0, 3)}/${Math.floor(100 + Math.random() * 900)}`;
+      const joiningDate = new Date().toLocaleDateString('en-IN');
+
+      const newUser = await User.create({
+        name: sanitizeString(name),
+        email: cleanEmail,
+        phone: phone || '',
+        department: sanitizeString(department) || '',
+        designation: sanitizeString(designation) || '',
+        userRole: normalizedRole,
+        password,
+        mustChangePassword: false,
+        accountStatus: 'approved',
+        idCardNo,
+        joiningDate,
+      });
+
+      await RegistrationRequest.create({
+        name: sanitizeString(name),
+        email: cleanEmail,
+        phone: phone || '',
+        department: sanitizeString(department) || '',
+        designation: sanitizeString(designation) || '',
+        requestedRole: normalizedRole,
+        status: 'approved',
+        directorApprovedAt: new Date(),
+        createdUserId: newUser._id.toString(),
+      });
+
+      return res.status(201).json({
+        message: `${normalizedRole} account created and approved automatically! You can log in now.`,
+        id: newUser._id,
+        autoApproved: true,
+      });
+    }
+
     // Find an HR to assign (for Employee requests)
     let assignedHrId = '', assignedHrName = '';
     if (normalizedRole === 'Employee') {
@@ -63,10 +101,9 @@ router.post('/register', async (req, res) => {
       department: sanitizeString(department) || '',
       designation: sanitizeString(designation) || '',
       requestedRole: normalizedRole,
-      customPassword: (normalizedRole === 'HR' || normalizedRole === 'Director') ? password : '',
       assignedHrId,
       assignedHrName,
-      status: normalizedRole === 'Employee' ? 'pending_hr' : 'pending_director',
+      status: 'pending_hr',
     });
 
     // Send welcome email to applicant
@@ -74,7 +111,7 @@ router.post('/register', async (req, res) => {
       .catch(e => console.error('Welcome email error:', e.message));
 
     // Alert HR (for employee registrations)
-    if (normalizedRole === 'Employee' && assignedHrId) {
+    if (assignedHrId) {
       const hrUser = await User.findById(assignedHrId).select('email');
       if (hrUser) {
         sendNewRegistrationAlert(hrUser.email, regRequest)
@@ -82,10 +119,9 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    // Create notification for HR/Director
-    const notifTarget = normalizedRole === 'Employee' ? 'HR' : 'Director';
+    // Create notification for HR
     await Notification.create({
-      targetRole: notifTarget,
+      targetRole: 'HR',
       title: 'New Registration Request',
       message: `${regRequest.name} (${normalizedRole}) has submitted a registration request.`,
       type: 'registration',
@@ -95,6 +131,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       message: 'Registration submitted. You will receive login credentials via email after approval.',
       id: regRequest._id,
+      autoApproved: false,
     });
   } catch (err) {
     console.error('Register error:', err);

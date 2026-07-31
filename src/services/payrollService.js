@@ -46,7 +46,7 @@ export function calculateSalaryForEmployee(employee, year, monthInput, lwpDeduct
 
   // Extract salary structure from employee profile
   const struct = employee.salaryStructure || {};
-  const basic = Number(struct.basic || employee.baseSalary || 25000);
+  const basic = Number(struct.basic || employee.baseSalary || 0);
   const hra = Number(struct.hra || Math.round(basic * 0.4));
   const da = Number(struct.da || 0);
   const sa = Number(struct.sa || 0);

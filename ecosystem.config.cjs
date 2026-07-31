@@ -37,7 +37,7 @@ module.exports = {
       max_memory_restart: '300M',
       env: {
         NODE_ENV: 'test',
-        PORT: 5001,
+        PORT: 5000,
         GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
         GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
         ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
@@ -45,7 +45,7 @@ module.exports = {
       },
       env_test: {
         NODE_ENV: 'test',
-        PORT: 5001,
+        PORT: 5000,
         GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
         GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
         ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',

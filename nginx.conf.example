@@ -31,7 +31,7 @@ server {
 }
 
 # -------------------------------------------------------------
-# 2. TEST ENVIRONMENT: api-test.jrkcrail.com -> Port 5001
+# 2. TEST ENVIRONMENT: api-test.jrkcrail.com -> Port 5000
 # -------------------------------------------------------------
 server {
     listen 80;
@@ -43,7 +43,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/api-test.jrkcrail.com/privkey.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:5001;
+        proxy_pass http://127.0.0.1:5000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

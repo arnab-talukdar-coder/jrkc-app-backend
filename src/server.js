@@ -538,7 +538,10 @@ app.post('/api/admin/registration-requests/:id/approve', authenticateToken, requ
     idCardNo: `JRKCRIPL/${Math.floor(100 + Math.random() * 900)}`,
     validity: validity || '',
     assignedHrId: hrObj.id, assignedHrName: hrObj.name, assignedHrEmail: hrObj.email,
-    salaryStructure: salaryStructure || { basic: 0, hra: 0, da: 0, sa: 0, employerPf: 0, employeePf: 0 },
+    salaryStructure: salaryStructure || { basic: 30000, hra: 12000, da: 0, sa: 8000, employerPf: 3600, employeePf: 3600 },
+    baseSalary: (salaryStructure?.basic) || 30000,
+    allowances: ((salaryStructure?.hra || 12000) + (salaryStructure?.sa || 8000)),
+    taxDeductions: ((salaryStructure?.employeePf || 3600) + 200 + 1500),
     recentLogs: []
   };
 

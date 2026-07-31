@@ -12,7 +12,7 @@ const router = express.Router();
 // Public. Creates a RegistrationRequest (not a User yet).
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, phone, department, designation, requestedRole, roleKey } = req.body;
+    const { name, email, phone, department, designation, requestedRole, roleKey, password } = req.body;
 
     if (!name || !email) return res.status(400).json({ error: 'Name and email are required.' });
     if (!validateEmail(email)) return res.status(400).json({ error: 'Invalid email address.' });
@@ -27,16 +27,22 @@ router.post('/register', async (req, res) => {
     const existingReq = await RegistrationRequest.findOne({ email: cleanEmail, status: { $in: ['pending_hr', 'pending_director'] } });
     if (existingReq) return res.status(409).json({ error: 'A registration request is already pending for this email.' });
 
-    // Validate role key for Director / HR
+    // Validate role key & password for Director / HR
     const normalizedRole = requestedRole || 'Employee';
     if (normalizedRole === 'Director') {
       if (roleKey !== (process.env.DIRECTOR_REGISTRATION_KEY || 'JRKC-DIRECTOR-2026')) {
         return res.status(403).json({ error: 'Invalid Director registration key.' });
       }
+      if (!password || password.length < 8) {
+        return res.status(400).json({ error: 'Password is required and must be at least 8 characters.' });
+      }
     }
     if (normalizedRole === 'HR') {
       if (roleKey !== (process.env.HR_REGISTRATION_KEY || 'JRKC-HR-2026')) {
         return res.status(403).json({ error: 'Invalid HR registration key.' });
+      }
+      if (!password || password.length < 8) {
+        return res.status(400).json({ error: 'Password is required and must be at least 8 characters.' });
       }
     }
 
@@ -57,6 +63,7 @@ router.post('/register', async (req, res) => {
       department: sanitizeString(department) || '',
       designation: sanitizeString(designation) || '',
       requestedRole: normalizedRole,
+      customPassword: (normalizedRole === 'HR' || normalizedRole === 'Director') ? password : '',
       assignedHrId,
       assignedHrName,
       status: normalizedRole === 'Employee' ? 'pending_hr' : 'pending_director',

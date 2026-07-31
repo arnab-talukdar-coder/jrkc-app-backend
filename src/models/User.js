@@ -88,8 +88,8 @@ const UserSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes
-UserSchema.index({ email: 1 });
 UserSchema.index({ userRole: 1 });
+
 UserSchema.index({ department: 1 });
 UserSchema.index({ accountStatus: 1 });
 UserSchema.index({ assignedHrId: 1 });

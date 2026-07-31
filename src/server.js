@@ -91,9 +91,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error.' });
 });
 
+import { seedDefaultUsers } from './seed.js';
+
 // ── Boot ──────────────────────────────────────────────────────────────────
 async function start() {
   await connectDB();
+  await seedDefaultUsers();
   app.listen(PORT, () => {
     console.log(`✅ JRKC HRMS v2 running on port ${PORT}`);
     console.log(`📋 API prefix: /api/v2`);

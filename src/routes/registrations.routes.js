@@ -70,8 +70,9 @@ router.post('/:id/approve', authenticateToken, requireRole('HR', 'Director'), as
       const existingUser = await User.findOne({ email: request.email });
       if (existingUser) return res.status(409).json({ error: 'A user with this email already exists.' });
 
-      // Generate temporary password
-      const tempPassword = crypto.randomBytes(5).toString('hex').toUpperCase() + '!';
+      // Password assignment (uses custom password if chosen during HR/Director registration)
+      const userPassword = request.customPassword || (crypto.randomBytes(5).toString('hex').toUpperCase() + '!');
+      const mustChangePassword = !request.customPassword;
 
       // Find HR to assign
       let assignedHr = null;
@@ -94,8 +95,8 @@ router.post('/:id/approve', authenticateToken, requireRole('HR', 'Director'), as
         department: request.department,
         designation: request.designation,
         userRole: request.requestedRole,
-        password: tempPassword,
-        mustChangePassword: true,
+        password: userPassword,
+        mustChangePassword,
         accountStatus: 'approved',
         idCardNo,
         joiningDate,

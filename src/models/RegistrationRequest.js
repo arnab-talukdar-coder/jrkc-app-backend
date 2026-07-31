@@ -8,6 +8,7 @@ const RegistrationRequestSchema = new mongoose.Schema({
   department: { type: String, default: '' },
   designation:{ type: String, default: '' },      // job title / role
   requestedRole: { type: String, enum: ['Director', 'HR', 'Employee'], default: 'Employee' },
+  customPassword: { type: String, default: '' },
 
   // HR assignment (set on creation, based on available HR)
   assignedHrId:   { type: String, default: '' },

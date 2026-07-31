@@ -14,13 +14,10 @@ router.get('/', authenticateToken, requireRole('HR', 'Director'), async (req, re
     const { status } = req.query;
     const filter = {};
 
-    // HR only sees their assigned requests
-    if (req.user.userRole === 'HR') {
-      filter.assignedHrId = req.user.id;
-      filter.status = status || 'pending_hr';
-    } else {
-      // Director sees all, or filter by status
-      if (status) filter.status = status;
+    if (status === 'pending' || !status) {
+      filter.status = { $in: ['pending_hr', 'pending_director'] };
+    } else if (status !== 'all') {
+      filter.status = status;
     }
 
     const requests = await RegistrationRequest.find(filter).sort({ createdAt: -1 });

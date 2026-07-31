@@ -104,81 +104,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── IN-MEMORY FALLBACK STORES ──
-let memEmployees = [...INITIAL_EMPLOYEES];
-let memApprovals = [...INITIAL_APPROVALS];
-let memAnnouncements = [...INITIAL_ANNOUNCEMENTS];
-let memRegistrationRequests = [...INITIAL_REGISTRATION_REQUESTS];
-let memPayslips = [...INITIAL_PAYSLIPS];
-let memNotifications = [];
-let memHolidays = [];
-
-const STORE_PATH = path.resolve('src/data/db_store.json');
-
-function saveDiskStore() {
-  try {
-    const dir = path.dirname(STORE_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(STORE_PATH, JSON.stringify({
-      memEmployees, memRegistrationRequests, memApprovals, memPayslips, memNotifications, memHolidays
-    }, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Disk store save error:', err.message);
-  }
-}
-
-function loadDiskStore() {
-  try {
-    if (fs.existsSync(STORE_PATH)) {
-      const data = JSON.parse(fs.readFileSync(STORE_PATH, 'utf-8'));
-      if (data.memEmployees?.length > 0) memEmployees = data.memEmployees;
-      if (data.memRegistrationRequests) memRegistrationRequests = data.memRegistrationRequests;
-      if (data.memApprovals) memApprovals = data.memApprovals;
-      if (data.memPayslips) memPayslips = data.memPayslips;
-      if (data.memNotifications) memNotifications = data.memNotifications;
-      if (data.memHolidays) memHolidays = data.memHolidays;
-      console.log(`Loaded ${memEmployees.length} employees from disk store.`);
-    }
-  } catch (err) {
-    console.error('Disk store load error:', err.message);
-  }
-}
-
 // ── DATABASE INITIALIZATION ──
 async function initDatabase() {
-  loadDiskStore();
   await connectDB();
-  if (mongoose.connection.readyState === 1) {
-    try {
-      const empCount = await Employee.countDocuments();
-      if (empCount === 0 && memEmployees.length > 0) {
-        await Employee.insertMany(memEmployees);
-      }
-      const regCount = await RegistrationRequest.countDocuments();
-      if (regCount === 0 && memRegistrationRequests.length > 0) {
-        await RegistrationRequest.insertMany(memRegistrationRequests);
-      }
-      const annCount = await Announcement.countDocuments();
-      if (annCount === 0 && memAnnouncements.length > 0) {
-        await Announcement.insertMany(memAnnouncements);
-      }
-      const bankCount = await BankDetails.countDocuments();
-      if (bankCount === 0) {
-        await BankDetails.create(INITIAL_BANK_DETAILS);
-      }
-      // Ensure global HR settings exist
-      const settingsCount = await HRSettings.countDocuments();
-      if (settingsCount === 0) {
-        await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
-      }
-    } catch (e) {
-      console.error('Database seeding error:', e.message);
+  try {
+    const bankCount = await BankDetails.countDocuments();
+    if (bankCount === 0) {
+      await BankDetails.create(INITIAL_BANK_DETAILS);
     }
+    const settingsCount = await HRSettings.countDocuments();
+    if (settingsCount === 0) {
+      await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
+    }
+    await seedDevelopmentData('arnab.talukdar07@gmail.com');
+    console.log('✅ Database connected & initial seeding complete.');
+  } catch (e) {
+    console.error('Database initialization error:', e.message);
   }
-
-  // Seed development mock data for both DB & in-memory disk store
-  await seedDevelopmentData('arnab.talukdar07@gmail.com', memEmployees, memApprovals, memPayslips, saveDiskStore);
-  console.log('Database and Mock Data initialization complete.');
 }
 
 initDatabase();
@@ -193,12 +135,11 @@ async function createNotification(notif) {
     ...notif
   };
   try {
-    if (mongoose.connection.readyState === 1) {
-      return await Notification.create(newNotif);
-    }
-  } catch (e) { console.error('Notification create error:', e.message); }
-  memNotifications.unshift(newNotif);
-  return newNotif;
+    return await Notification.create(newNotif);
+  } catch (e) {
+    console.error('Notification create error:', e.message);
+    return newNotif;
+  }
 }
 
 // Haversine formula — distance between two GPS coordinates in meters

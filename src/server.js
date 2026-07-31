@@ -783,16 +783,18 @@ app.post('/api/attendance/clock-in', authenticateToken, async (req, res) => {
   if (!emp) emp = memEmployees.find(e => (lookupId && e.id === lookupId) || (lookupEmail && e.email?.toLowerCase() === lookupEmail));
   if (!emp) return res.status(404).json({ error: 'Employee profile not found' });
 
-  // Check if already clocked in today (duplicate prevention)
-  if (emp.status === 'Clocked In') {
-    return res.status(400).json({ error: 'You are already clocked in. Please clock out first.' });
-  }
-  const alreadyClockedToday = emp.recentLogs?.some(l => {
-    if (!l.clockInTimestamp) return false;
-    return l.clockInTimestamp.startsWith(todayISO) && l.status === 'Active';
-  });
-  if (alreadyClockedToday) {
-    return res.status(400).json({ error: 'You already have an active clock-in session today.' });
+  // Auto-close any previous active logs
+  if (Array.isArray(emp.recentLogs)) {
+    emp.recentLogs.forEach(l => {
+      if (l.status === 'Active' || !l.clockOutTime) {
+        l.status = 'Completed';
+        l.clockOutTime = l.clockOutTime || timeStr;
+        l.clockOutTimestamp = l.clockOutTimestamp || now.toISOString();
+        if (l.hours?.includes('Active')) {
+          l.hours = `${l.clockInTime || timeStr} - ${timeStr}`;
+        }
+      }
+    });
   }
 
   // GPS Geofence validation
@@ -825,30 +827,22 @@ app.post('/api/attendance/clock-in', authenticateToken, async (req, res) => {
   };
 
   try {
-    if (mongoose.connection.readyState === 1) {
-      const updated = await Employee.findOneAndUpdate(
-        { $or: [{ id: emp.id }, { email: emp.email }] },
-        { $set: { status: 'Clocked In', clockInTimestamp: now.toISOString(), clockOutTimestamp: null }, $push: { recentLogs: { $each: [logEntry], $position: 0 } } },
-        { new: true }
-      );
-      if (updated) {
-        const empObj = updated.toObject ? updated.toObject() : updated;
-        const memIdx = memEmployees.findIndex(e => e.id === updated.id || (e.email && updated.email && e.email.toLowerCase().trim() === updated.email.toLowerCase().trim()));
-        if (memIdx !== -1) {
-          memEmployees[memIdx] = empObj;
-        } else {
-          memEmployees.unshift(empObj);
-        }
-        saveDiskStore();
-        return res.json({ message: 'Clocked in successfully', employee: empObj, log: logEntry });
-      }
+    const updated = await Employee.findOneAndUpdate(
+      { $or: [{ id: emp.id }, { email: emp.email }] },
+      { $set: { status: 'Clocked In', clockInTimestamp: now.toISOString(), clockOutTimestamp: null }, $push: { recentLogs: { $each: [logEntry], $position: 0 } } },
+      { new: true }
+    );
+    if (updated) {
+      return res.json({ message: 'Clocked in successfully', employee: updated, log: logEntry });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('Clock in error:', e.message);
+  }
 
   emp.status = 'Clocked In'; emp.clockInTimestamp = now.toISOString(); emp.clockOutTimestamp = null;
   if (!emp.recentLogs) emp.recentLogs = [];
   emp.recentLogs.unshift(logEntry);
-  saveDiskStore();
+  await emp.save();
   res.json({ message: 'Clocked in successfully', employee: emp, log: logEntry });
 });
 
@@ -861,61 +855,43 @@ app.post('/api/attendance/clock-out', authenticateToken, async (req, res) => {
   const lookupEmail = (email || req.user?.email || '').toLowerCase().trim();
   const lookupId = employeeId || req.user?.id || '';
 
-  let emp = null;
-  try {
-    if (mongoose.connection.readyState === 1) {
-      emp = await Employee.findOne({
-        $or: [
-          { id: lookupId },
-          { email: lookupEmail }
-        ]
-      });
-    }
-  } catch (e) {}
-  if (!emp) emp = memEmployees.find(e => (lookupId && e.id === lookupId) || (lookupEmail && e.email?.toLowerCase() === lookupEmail));
+  let emp = await Employee.findOne({
+    $or: [
+      { id: lookupId },
+      { email: lookupEmail }
+    ]
+  });
   if (!emp) return res.status(404).json({ error: 'Employee profile not found' });
 
   // Update active log function
-  const updateLog = (logs) => {
-    if (!logs || !Array.isArray(logs)) return;
-    const activeLog = logs.find(l => l.status === 'Active' || !l.clockOutTime);
-    if (activeLog) {
-      const duration = computeDuration(activeLog.clockInTimestamp, now);
-      activeLog.clockOutTime = timeStr;
-      activeLog.clockOutTimestamp = now.toISOString();
-      activeLog.hours = `${activeLog.clockInTime || timeStr} - ${timeStr}`;
-      activeLog.duration = duration;
-      activeLog.status = 'Completed';
-      activeLog.clockOutLatitude = latitude || null;
-      activeLog.clockOutLongitude = longitude || null;
-    }
-  };
+  if (Array.isArray(emp.recentLogs)) {
+    emp.recentLogs.forEach(activeLog => {
+      if (activeLog.status === 'Active' || !activeLog.clockOutTime) {
+        const duration = computeDuration(activeLog.clockInTimestamp, now);
+        activeLog.clockOutTime = timeStr;
+        activeLog.clockOutTimestamp = now.toISOString();
+        activeLog.hours = `${activeLog.clockInTime || timeStr} - ${timeStr}`;
+        activeLog.duration = duration;
+        activeLog.status = 'Completed';
+        activeLog.clockOutLatitude = latitude || null;
+        activeLog.clockOutLongitude = longitude || null;
+      }
+    });
+  }
 
   try {
-    if (mongoose.connection.readyState === 1) {
-      updateLog(emp.recentLogs);
-      emp.status = 'Clocked Out';
-      emp.clockOutTimestamp = now.toISOString();
-      emp.markModified('recentLogs');
-      await emp.save();
+    emp.status = 'Clocked Out';
+    emp.clockOutTimestamp = now.toISOString();
+    emp.markModified('recentLogs');
+    await emp.save();
+    return res.json({ message: 'Clocked out successfully', employee: emp });
+  } catch (e) {
+    console.error('Clock out DB save error:', e.message);
+  }
 
-      const empObj = emp.toObject ? emp.toObject() : emp;
-      const memIdx = memEmployees.findIndex(e => e.id === emp.id || (e.email && emp.email && e.email.toLowerCase().trim() === emp.email.toLowerCase().trim()));
-      if (memIdx !== -1) {
-        memEmployees[memIdx] = empObj;
-      } else {
-        memEmployees.unshift(empObj);
-      }
-      saveDiskStore();
-
-      return res.json({ message: 'Clocked out successfully', employee: empObj });
-    }
-  } catch (e) {}
-
-  updateLog(emp.recentLogs);
   emp.status = 'Clocked Out';
   emp.clockOutTimestamp = now.toISOString();
-  saveDiskStore();
+  await emp.save();
   res.json({ message: 'Clocked out successfully', employee: emp });
 });
 

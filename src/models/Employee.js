@@ -109,18 +109,17 @@ const EmployeeSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes for performance
-EmployeeSchema.index({ email: 1 });
+// Note: email is already indexed via unique: true
 EmployeeSchema.index({ userRole: 1 });
 EmployeeSchema.index({ department: 1 });
 EmployeeSchema.index({ assignedHrId: 1 });
 EmployeeSchema.index({ accountStatus: 1 });
 
 // Hash password before saving (only if modified)
-EmployeeSchema.pre('save', async function (next) {
+EmployeeSchema.pre('save', async function () {
   if (this.isModified('password') && this.password && !this.password.startsWith('$2b$') && !this.password.startsWith('$2a$')) {
     this.password = await bcrypt.hash(this.password, 10);
   }
-  next();
 });
 
 // Compare password

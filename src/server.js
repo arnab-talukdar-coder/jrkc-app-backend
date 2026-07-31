@@ -105,6 +105,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── IN-MEMORY FALLBACK STORES (Deprecated, left empty to prevent ReferenceErrors in legacy logic) ──
+let memEmployees = [];
+let memApprovals = [];
+let memAnnouncements = [];
+let memRegistrationRequests = [];
+let memPayslips = [];
+let memNotifications = [];
+let memHolidays = [];
+
+const saveDiskStore = () => {};
+
 // ── DATABASE INITIALIZATION ──
 async function initDatabase() {
   await connectDB();

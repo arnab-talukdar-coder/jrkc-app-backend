@@ -262,16 +262,23 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'Invalid email address' });
   }
 
-  // Check if email already registered
+  // Check if email already registered or pending approval
   let existing = null;
+  let pendingReg = null;
   try {
     if (mongoose.connection.readyState === 1) {
       existing = await Employee.findOne({ email: email.toLowerCase().trim() });
+      pendingReg = await RegistrationRequest.findOne({ email: email.toLowerCase().trim() });
     }
   } catch (e) {}
   if (!existing) existing = memEmployees.find(e => e.email?.toLowerCase() === email.toLowerCase().trim());
+  if (!pendingReg) pendingReg = memRegistrationRequests.find(r => r.email?.toLowerCase() === email.toLowerCase().trim());
+
   if (existing) {
-    return res.status(409).json({ error: 'An account with this email already exists.' });
+    return res.status(409).json({ error: 'An account with this email already exists. Please log in.' });
+  }
+  if (pendingReg) {
+    return res.status(409).json({ error: 'A registration request for this email is already pending HR/Admin approval.' });
   }
 
   let hashedPassword = null;

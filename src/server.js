@@ -468,6 +468,41 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
 // 2. ADMIN ENDPOINTS (Require Admin role)
 // ======================================================
 
+// Admin Clear All Test Data & Re-seed Clean Initial State
+app.post(['/api/admin/clear-all-data', '/api/admin/reset-data'], authenticateToken, requireRole('Admin'), async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      await Employee.deleteMany({});
+      await RegistrationRequest.deleteMany({});
+      await Approval.deleteMany({});
+      await Payslip.deleteMany({});
+      await Notification.deleteMany({});
+    }
+  } catch (e) {
+    console.error('Clear DB data error:', e.message);
+  }
+
+  // Clear in-memory collections
+  memEmployees.length = 0;
+  memRegistrationRequests.length = 0;
+  memApprovals.length = 0;
+  memPayslips.length = 0;
+  memNotifications.length = 0;
+
+  // Re-seed clean initial data
+  try {
+    await seedDevelopmentData('arnab.talukdar07@gmail.com', memEmployees, memApprovals, memPayslips, saveDiskStore);
+  } catch (e) {
+    console.error('Re-seed data error:', e.message);
+  }
+  saveDiskStore();
+
+  res.json({
+    message: 'All test data and registrations cleared successfully. Default Admin and HR accounts restored.',
+    employeesCount: memEmployees.length
+  });
+});
+
 // Admin Reset User Password
 app.post('/api/admin/reset-password', authenticateToken, requireRole('Admin'), async (req, res) => {
   const { employeeId, email, newPassword } = req.body;

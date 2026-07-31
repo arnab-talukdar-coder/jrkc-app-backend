@@ -1,0 +1,195 @@
+import { Attendance } from '../models/Attendance.js';
+import { Employee } from '../models/Employee.js';
+import {
+  haversineDistance,
+  getTodayDateStr,
+  getFormattedTimeStr,
+  computeDurationMinutes
+} from '../services/attendanceService.js';
+
+export const getStatus = async (req, res) => {
+  try {
+    const employeeId = req.user?.id;
+    const today = getTodayDateStr();
+
+    if (!employeeId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const attendance = await Attendance.findOne({ employeeId, date: today });
+
+    if (!attendance) {
+      return res.status(200).json({ status: 'NOT_CLOCKED_IN', attendance: null });
+    }
+
+    return res.status(200).json({ status: attendance.status, attendance });
+  } catch (error) {
+    console.error('Error fetching attendance status:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const clockIn = async (req, res) => {
+  try {
+    const employeeId = req.user?.id;
+    const { latitude, longitude, deviceInfo } = req.body;
+    const now = new Date();
+    const today = getTodayDateStr();
+    const timeStr = getFormattedTimeStr(now);
+
+    if (!employeeId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const emp = await Employee.findOne({ id: employeeId });
+    if (!emp) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Check if Sunday
+    if (now.getDay() === 0) {
+      return res.status(400).json({ error: 'Sunday is a non-working day. Attendance cannot be recorded.' });
+    }
+
+    // Geofence Validation
+    if (emp.assignedLocation && emp.assignedLocation.latitude && emp.assignedLocation.longitude) {
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ error: 'GPS location is required for attendance.' });
+      }
+      const distance = haversineDistance(latitude, longitude, emp.assignedLocation.latitude, emp.assignedLocation.longitude);
+      const radius = emp.assignedLocation.geofenceRadius || 50;
+      if (distance > radius) {
+        return res.status(403).json({
+          error: `You are ${Math.round(distance)}m from your work location. You must be within ${radius}m to clock in.`,
+          distance: Math.round(distance),
+          radius
+        });
+      }
+    }
+
+    // Check for existing attendance today
+    let attendance = await Attendance.findOne({ employeeId, date: today });
+    if (attendance) {
+      if (attendance.status === 'CLOCKED_IN') {
+        return res.status(400).json({ error: 'You are already clocked in.' });
+      }
+      // If we want to allow multiple clock ins per day, we could create a new record or update the existing one.
+      // But the requirement says "Prevent Duplicate Clock In / Clock Out". So one punch per day.
+      if (attendance.status === 'CLOCKED_OUT') {
+        return res.status(400).json({ error: 'You have already completed your shift for today.' });
+      }
+    }
+
+    // Create new Attendance record
+    attendance = new Attendance({
+      employeeId: emp.id,
+      employeeEmail: emp.email,
+      date: today,
+      status: 'CLOCKED_IN',
+      clockInTime: timeStr,
+      clockInTimestamp: now,
+      clockInLocation: { latitude, longitude },
+      assignedRadius: emp.assignedLocation?.geofenceRadius || 50,
+      deviceInfo: deviceInfo || ''
+    });
+
+    await attendance.save();
+
+    // Update Employee backward compatibility (optional but good for other parts of the app)
+    emp.status = 'Clocked In';
+    emp.clockInTimestamp = now.toISOString();
+    emp.clockOutTimestamp = null;
+    await emp.save();
+
+    return res.status(201).json({ message: 'Clocked in successfully', attendance });
+  } catch (error) {
+    console.error('Error during clock in:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const clockOut = async (req, res) => {
+  try {
+    const employeeId = req.user?.id;
+    const { latitude, longitude } = req.body;
+    const now = new Date();
+    const today = getTodayDateStr();
+    const timeStr = getFormattedTimeStr(now);
+
+    if (!employeeId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const emp = await Employee.findOne({ id: employeeId });
+    if (!emp) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Geofence Validation
+    if (emp.assignedLocation && emp.assignedLocation.latitude && emp.assignedLocation.longitude) {
+      if (latitude === undefined || longitude === undefined) {
+        return res.status(400).json({ error: 'GPS location is required for attendance.' });
+      }
+      const distance = haversineDistance(latitude, longitude, emp.assignedLocation.latitude, emp.assignedLocation.longitude);
+      const radius = emp.assignedLocation.geofenceRadius || 50;
+      if (distance > radius) {
+        return res.status(403).json({
+          error: `You are ${Math.round(distance)}m from your work location. You must be within ${radius}m to clock out.`,
+          distance: Math.round(distance),
+          radius
+        });
+      }
+    }
+
+    // Check for existing attendance today
+    const attendance = await Attendance.findOne({ employeeId, date: today });
+    if (!attendance) {
+      return res.status(400).json({ error: 'No active clock-in session found for today.' });
+    }
+    if (attendance.status === 'CLOCKED_OUT') {
+      return res.status(400).json({ error: 'You are already clocked out.' });
+    }
+
+    const durationMins = computeDurationMinutes(attendance.clockInTimestamp, now);
+
+    attendance.status = 'CLOCKED_OUT';
+    attendance.clockOutTime = timeStr;
+    attendance.clockOutTimestamp = now;
+    attendance.clockOutLocation = { latitude, longitude };
+    attendance.durationMinutes = durationMins;
+    await attendance.save();
+
+    emp.status = 'Clocked Out';
+    emp.clockOutTimestamp = now.toISOString();
+    await emp.save();
+
+    return res.status(200).json({ message: 'Clocked out successfully', attendance });
+  } catch (error) {
+    console.error('Error during clock out:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getHistory = async (req, res) => {
+  try {
+    const employeeId = req.user?.id;
+    const { month } = req.query; // optional format YYYY-MM
+
+    if (!employeeId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    let query = { employeeId };
+    
+    if (month) {
+      // month is "YYYY-MM", date is "YYYY-MM-DD", so we can use a regex or string prefix
+      query.date = { $regex: `^${month}` };
+    }
+
+    const history = await Attendance.find(query).sort({ date: -1 });
+    return res.status(200).json(history);
+  } catch (error) {
+    console.error('Error fetching attendance history:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};

@@ -59,6 +59,7 @@ import {
 } from './data/initialData.js';
 import { calculateSalaryForEmployee, calculateMonSatWorkingDays } from './services/payrollService.js';
 import { seedDevelopmentData } from './services/mockDataSeeder.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -757,143 +758,8 @@ app.post('/api/employees/photo-request', authenticateToken, async (req, res) => 
 // 4. ATTENDANCE & TIMESHEET
 // ======================================================
 
-// Clock In — with GPS geofence validation and duplicate prevention
-app.post('/api/attendance/clock-in', authenticateToken, async (req, res) => {
-  const { employeeId, email, latitude, longitude, deviceInfo } = req.body;
-  const now = new Date();
-  const dateStr = getTodayDateStr();
-  const todayISO = getTodayISO();
-  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
-
-  // Find employee by employeeId, email, or authenticated user credentials
-  const lookupEmail = (email || req.user?.email || '').toLowerCase().trim();
-  const lookupId = employeeId || req.user?.id || '';
-
-  let emp = null;
-  try {
-    if (mongoose.connection.readyState === 1) {
-      emp = await Employee.findOne({
-        $or: [
-          { id: lookupId },
-          { email: lookupEmail }
-        ]
-      });
-    }
-  } catch (e) {}
-  if (!emp) emp = memEmployees.find(e => (lookupId && e.id === lookupId) || (lookupEmail && e.email?.toLowerCase() === lookupEmail));
-  if (!emp) return res.status(404).json({ error: 'Employee profile not found' });
-
-  // Auto-close any previous active logs
-  if (Array.isArray(emp.recentLogs)) {
-    emp.recentLogs.forEach(l => {
-      if (l.status === 'Active' || !l.clockOutTime) {
-        l.status = 'Completed';
-        l.clockOutTime = l.clockOutTime || timeStr;
-        l.clockOutTimestamp = l.clockOutTimestamp || now.toISOString();
-        if (l.hours?.includes('Active')) {
-          l.hours = `${l.clockInTime || timeStr} - ${timeStr}`;
-        }
-      }
-    });
-  }
-
-  // GPS Geofence validation
-  if (emp.assignedLocation && emp.assignedLocation.latitude && emp.assignedLocation.longitude) {
-    if (latitude === undefined || longitude === undefined) {
-      return res.status(400).json({ error: 'GPS location is required for attendance. Please enable location services.' });
-    }
-    const distance = haversineDistance(latitude, longitude, emp.assignedLocation.latitude, emp.assignedLocation.longitude);
-    const radius = emp.assignedLocation.geofenceRadius || 50;
-    if (distance > radius) {
-      return res.status(403).json({
-        error: `You are ${Math.round(distance)}m from your work location. You must be within ${radius}m to clock in.`,
-        distance: Math.round(distance), radius
-      });
-    }
-  }
-
-  // Check if Sunday
-  if (now.getDay() === 0) {
-    return res.status(400).json({ error: 'Sunday is a non-working day. Attendance cannot be recorded.' });
-  }
-
-  const logEntry = {
-    id: `ATT-${Date.now().toString(36).toUpperCase()}`,
-    type: 'clock_punch', date: dateStr, clockInTime: timeStr,
-    clockInTimestamp: now.toISOString(), clockOutTime: null, clockOutTimestamp: null,
-    hours: `${timeStr} - Active`, duration: 'Active Session', status: 'Active',
-    clockInLatitude: latitude || null, clockInLongitude: longitude || null,
-    deviceInfo: deviceInfo || '', createdAt: now.toISOString()
-  };
-
-  try {
-    const updated = await Employee.findOneAndUpdate(
-      { $or: [{ id: emp.id }, { email: emp.email }] },
-      { $set: { status: 'Clocked In', clockInTimestamp: now.toISOString(), clockOutTimestamp: null }, $push: { recentLogs: { $each: [logEntry], $position: 0 } } },
-      { new: true }
-    );
-    if (updated) {
-      return res.json({ message: 'Clocked in successfully', employee: updated, log: logEntry });
-    }
-  } catch (e) {
-    console.error('Clock in error:', e.message);
-  }
-
-  emp.status = 'Clocked In'; emp.clockInTimestamp = now.toISOString(); emp.clockOutTimestamp = null;
-  if (!emp.recentLogs) emp.recentLogs = [];
-  emp.recentLogs.unshift(logEntry);
-  await emp.save();
-  res.json({ message: 'Clocked in successfully', employee: emp, log: logEntry });
-});
-
-// Clock Out — with GPS geofence validation and duplicate prevention
-app.post('/api/attendance/clock-out', authenticateToken, async (req, res) => {
-  const { employeeId, email, latitude, longitude } = req.body;
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
-
-  const lookupEmail = (email || req.user?.email || '').toLowerCase().trim();
-  const lookupId = employeeId || req.user?.id || '';
-
-  let emp = await Employee.findOne({
-    $or: [
-      { id: lookupId },
-      { email: lookupEmail }
-    ]
-  });
-  if (!emp) return res.status(404).json({ error: 'Employee profile not found' });
-
-  // Update active log function
-  if (Array.isArray(emp.recentLogs)) {
-    emp.recentLogs.forEach(activeLog => {
-      if (activeLog.status === 'Active' || !activeLog.clockOutTime) {
-        const duration = computeDuration(activeLog.clockInTimestamp, now);
-        activeLog.clockOutTime = timeStr;
-        activeLog.clockOutTimestamp = now.toISOString();
-        activeLog.hours = `${activeLog.clockInTime || timeStr} - ${timeStr}`;
-        activeLog.duration = duration;
-        activeLog.status = 'Completed';
-        activeLog.clockOutLatitude = latitude || null;
-        activeLog.clockOutLongitude = longitude || null;
-      }
-    });
-  }
-
-  try {
-    emp.status = 'Clocked Out';
-    emp.clockOutTimestamp = now.toISOString();
-    emp.markModified('recentLogs');
-    await emp.save();
-    return res.json({ message: 'Clocked out successfully', employee: emp });
-  } catch (e) {
-    console.error('Clock out DB save error:', e.message);
-  }
-
-  emp.status = 'Clocked Out';
-  emp.clockOutTimestamp = now.toISOString();
-  await emp.save();
-  res.json({ message: 'Clocked out successfully', employee: emp });
-});
+// Mount Modular Attendance Routes (Clock In/Out/Status/History)
+app.use('/api/attendance', attendanceRoutes);
 
 // Timesheet Entry
 app.post('/api/attendance/timesheet-entry', authenticateToken, async (req, res) => {

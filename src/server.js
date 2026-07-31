@@ -564,6 +564,12 @@ app.post('/api/admin/registration-requests/:id/approve', authenticateToken, requ
 
   let hrObj = memEmployees.find(e => e.id === (assignedHrId || regItem.assignedHrId) && e.userRole === 'HR');
   if (!hrObj) hrObj = memEmployees.find(e => e.userRole === 'HR');
+  if (!hrObj && mongoose.connection.readyState === 1) {
+    try {
+      const dbHr = await Employee.findOne({ userRole: 'HR' });
+      if (dbHr) hrObj = { id: dbHr.id, name: dbHr.name, email: dbHr.email };
+    } catch (e) {}
+  }
   if (!hrObj) hrObj = { id: '', name: '', email: '' };
 
   const tempPassword = 'JRKC#' + Math.floor(100000 + Math.random() * 900000);
@@ -700,6 +706,7 @@ app.put('/api/admin/employees/:id/assign-location', authenticateToken, requireRo
 // Get employees list
 app.get('/api/employees', authenticateToken, async (req, res) => {
   const { department, search, hrId, userRole } = req.query;
+  let dbEmps = [];
   try {
     if (mongoose.connection.readyState === 1) {
       let query = {};
@@ -710,11 +717,27 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
         const q = search.toString();
         query.$or = [{ name: new RegExp(q, 'i') }, { role: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }];
       }
-      return res.json(await Employee.find(query).sort({ createdAt: -1 }));
+      dbEmps = await Employee.find(query).sort({ createdAt: -1 });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('Error fetching employees from DB:', e.message);
+  }
 
-  let result = [...memEmployees];
+  // Combine DB and memory store to ensure no approved employee is ever lost
+  const empMap = new Map();
+  if (Array.isArray(dbEmps)) {
+    dbEmps.forEach(e => {
+      const obj = e.toObject ? e.toObject() : e;
+      if (obj.email) empMap.set(obj.email.toLowerCase().trim(), obj);
+    });
+  }
+  memEmployees.forEach(e => {
+    if (e.email && !empMap.has(e.email.toLowerCase().trim())) {
+      empMap.set(e.email.toLowerCase().trim(), e);
+    }
+  });
+
+  let result = Array.from(empMap.values());
   if (department && department !== 'All') result = result.filter(e => e.department?.toLowerCase() === department.toString().toLowerCase());
   if (hrId) result = result.filter(e => e.assignedHrId === hrId);
   if (userRole) result = result.filter(e => e.userRole === userRole);

@@ -515,8 +515,14 @@ app.post('/api/admin/registration-requests/:id/approve', authenticateToken, requ
   const { assignedHrId, salaryStructure, dob, bloodGroup, station, validity } = req.body;
 
   let regItem = null;
-  try { if (mongoose.connection.readyState === 1) regItem = await RegistrationRequest.findOne({ id }); } catch (e) {}
-  if (!regItem) regItem = memRegistrationRequests.find(r => r.id === id);
+  const queryFilter = (mongoose.Types.ObjectId.isValid(id)) ? { $or: [{ id }, { _id: id }] } : { id };
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      regItem = await RegistrationRequest.findOne(queryFilter);
+    }
+  } catch (e) {}
+  if (!regItem) regItem = memRegistrationRequests.find(r => r.id === id || r._id === id);
   if (!regItem) return res.status(404).json({ error: 'Registration request not found' });
 
   regItem.status = 'approved';
@@ -555,14 +561,35 @@ app.post('/api/admin/registration-requests/:id/approve', authenticateToken, requ
 
   try {
     if (mongoose.connection.readyState === 1) {
-      await RegistrationRequest.findOneAndUpdate({ id }, { status: 'approved' });
-      await Employee.create(newEmp);
+      await RegistrationRequest.findOneAndUpdate(queryFilter, { status: 'approved' });
+      const existingEmp = await Employee.findOne({ email: newEmp.email });
+      if (existingEmp) {
+        existingEmp.accountStatus = 'approved';
+        existingEmp.userRole = newEmp.userRole;
+        existingEmp.password = userPassword;
+        existingEmp.salaryStructure = newEmp.salaryStructure;
+        existingEmp.baseSalary = newEmp.baseSalary;
+        existingEmp.allowances = newEmp.allowances;
+        existingEmp.taxDeductions = newEmp.taxDeductions;
+        existingEmp.assignedHrId = newEmp.assignedHrId;
+        existingEmp.assignedHrName = newEmp.assignedHrName;
+        existingEmp.assignedHrEmail = newEmp.assignedHrEmail;
+        await existingEmp.save();
+      } else {
+        await Employee.create(newEmp);
+      }
     }
   } catch (e) { console.error('Approve registration error:', e.message); }
 
-  const index = memRegistrationRequests.findIndex(r => r.id === id);
+  const index = memRegistrationRequests.findIndex(r => r.id === id || r._id === id);
   if (index !== -1) memRegistrationRequests[index].status = 'approved';
-  memEmployees.unshift(newEmp);
+
+  const existingMemIdx = memEmployees.findIndex(e => e.email?.toLowerCase() === newEmp.email.toLowerCase());
+  if (existingMemIdx !== -1) {
+    memEmployees[existingMemIdx] = { ...memEmployees[existingMemIdx], ...newEmp, accountStatus: 'approved' };
+  } else {
+    memEmployees.unshift(newEmp);
+  }
   saveDiskStore();
 
   sendEmployeeApprovalEmail(newEmp, hrObj.email, tempPassword).catch(err => console.error('Welcome email error:', err));

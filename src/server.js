@@ -728,19 +728,17 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
     console.error('Error fetching employees from DB:', e.message);
   }
 
-  // Combine DB and memory store to ensure no approved employee is ever lost
+  // Combine memory store first, then DB second so DB status ALWAYS overrides memory store
   const empMap = new Map();
+  memEmployees.forEach(e => {
+    if (e.email) empMap.set(e.email.toLowerCase().trim(), e);
+  });
   if (Array.isArray(dbEmps)) {
     dbEmps.forEach(e => {
       const obj = e.toObject ? e.toObject() : e;
       if (obj.email) empMap.set(obj.email.toLowerCase().trim(), obj);
     });
   }
-  memEmployees.forEach(e => {
-    if (e.email && !empMap.has(e.email.toLowerCase().trim())) {
-      empMap.set(e.email.toLowerCase().trim(), e);
-    }
-  });
 
   let result = Array.from(empMap.values());
   if (department && department !== 'All') result = result.filter(e => e.department?.toLowerCase() === department.toString().toLowerCase());
@@ -893,10 +891,15 @@ app.post('/api/attendance/clock-in', authenticateToken, async (req, res) => {
         { new: true }
       );
       if (updated) {
-        const memIdx = memEmployees.findIndex(e => e.id === updated.id || e.email === updated.email);
-        if (memIdx !== -1) memEmployees[memIdx] = updated.toObject ? updated.toObject() : updated;
+        const empObj = updated.toObject ? updated.toObject() : updated;
+        const memIdx = memEmployees.findIndex(e => e.id === updated.id || (e.email && updated.email && e.email.toLowerCase().trim() === updated.email.toLowerCase().trim()));
+        if (memIdx !== -1) {
+          memEmployees[memIdx] = empObj;
+        } else {
+          memEmployees.unshift(empObj);
+        }
         saveDiskStore();
-        return res.json({ message: 'Clocked in successfully', employee: updated, log: logEntry });
+        return res.json({ message: 'Clocked in successfully', employee: empObj, log: logEntry });
       }
     }
   } catch (e) {}
@@ -955,11 +958,16 @@ app.post('/api/attendance/clock-out', authenticateToken, async (req, res) => {
       emp.markModified('recentLogs');
       await emp.save();
 
-      const memIdx = memEmployees.findIndex(e => e.id === emp.id || e.email === emp.email);
-      if (memIdx !== -1) memEmployees[memIdx] = emp.toObject ? emp.toObject() : emp;
+      const empObj = emp.toObject ? emp.toObject() : emp;
+      const memIdx = memEmployees.findIndex(e => e.id === emp.id || (e.email && emp.email && e.email.toLowerCase().trim() === emp.email.toLowerCase().trim()));
+      if (memIdx !== -1) {
+        memEmployees[memIdx] = empObj;
+      } else {
+        memEmployees.unshift(empObj);
+      }
       saveDiskStore();
 
-      return res.json({ message: 'Clocked out successfully', employee: emp });
+      return res.json({ message: 'Clocked out successfully', employee: empObj });
     }
   } catch (e) {}
 

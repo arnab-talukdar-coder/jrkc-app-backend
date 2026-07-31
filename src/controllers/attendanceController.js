@@ -51,7 +51,11 @@ export const clockIn = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email?.toLowerCase()?.trim() }] });
+    const queryParams = [];
+    if (employeeId) queryParams.push({ id: employeeId });
+    if (email) queryParams.push({ email: email.toLowerCase().trim() });
+
+    const emp = await Employee.findOne({ $or: queryParams });
     if (!emp) {
       return res.status(404).json({ error: 'Employee not found' });
     }
@@ -134,7 +138,11 @@ export const clockOut = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email?.toLowerCase()?.trim() }] });
+    const queryParams = [];
+    if (employeeId) queryParams.push({ id: employeeId });
+    if (email) queryParams.push({ email: email.toLowerCase().trim() });
+
+    const emp = await Employee.findOne({ $or: queryParams });
     if (!emp) {
       return res.status(404).json({ error: 'Employee not found' });
     }

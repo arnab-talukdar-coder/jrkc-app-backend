@@ -652,9 +652,10 @@ app.put('/api/admin/employees/:id/assign-location', authenticateToken, requireRo
 
 // Get employees list
 app.get('/api/employees', authenticateToken, async (req, res) => {
-  const { department, search, hrId, userRole } = req.query;
-  let dbEmps = [];
   try {
+    const { department, search, hrId, userRole } = req.query;
+    let dbEmps = [];
+    
     if (mongoose.connection.readyState === 1) {
       let query = {};
       if (department && department !== 'All') query.department = new RegExp(`^${department}$`, 'i');
@@ -666,31 +667,41 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
       }
       dbEmps = await Employee.find(query).sort({ createdAt: -1 });
     }
-  } catch (e) {
-    console.error('Error fetching employees from DB:', e.message);
-  }
 
-  // Combine memory store first, then DB second so DB status ALWAYS overrides memory store
-  const empMap = new Map();
-  memEmployees.forEach(e => {
-    if (e.email) empMap.set(e.email.toLowerCase().trim(), e);
-  });
-  if (Array.isArray(dbEmps)) {
-    dbEmps.forEach(e => {
-      const obj = e.toObject ? e.toObject() : e;
-      if (obj.email) empMap.set(obj.email.toLowerCase().trim(), obj);
+    // Combine memory store first, then DB second so DB status ALWAYS overrides memory store
+    const empMap = new Map();
+    memEmployees.forEach(e => {
+      try {
+        if (e && e.email && typeof e.email === 'string') empMap.set(e.email.toLowerCase().trim(), e);
+      } catch (err) {}
     });
-  }
+    
+    if (Array.isArray(dbEmps)) {
+      dbEmps.forEach(e => {
+        try {
+          const obj = e.toObject ? e.toObject() : e;
+          if (obj && obj.email && typeof obj.email === 'string') empMap.set(obj.email.toLowerCase().trim(), obj);
+        } catch (err) {}
+      });
+    }
 
-  let result = Array.from(empMap.values());
-  if (department && department !== 'All') result = result.filter(e => e.department?.toLowerCase() === department.toString().toLowerCase());
-  if (hrId) result = result.filter(e => e.assignedHrId === hrId);
-  if (userRole) result = result.filter(e => e.userRole === userRole);
-  if (search) {
-    const q = search.toString().toLowerCase();
-    result = result.filter(e => e.name?.toLowerCase().includes(q) || e.role?.toLowerCase().includes(q) || e.email?.toLowerCase().includes(q));
+    let result = Array.from(empMap.values());
+    if (department && department !== 'All') result = result.filter(e => e.department && typeof e.department === 'string' && e.department.toLowerCase() === department.toString().toLowerCase());
+    if (hrId) result = result.filter(e => e.assignedHrId === hrId);
+    if (userRole) result = result.filter(e => e.userRole === userRole);
+    if (search) {
+      const q = search.toString().toLowerCase();
+      result = result.filter(e => 
+        (e.name && typeof e.name === 'string' && e.name.toLowerCase().includes(q)) || 
+        (e.role && typeof e.role === 'string' && e.role.toLowerCase().includes(q)) || 
+        (e.email && typeof e.email === 'string' && e.email.toLowerCase().includes(q))
+      );
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('CRITICAL ERROR in /api/employees GET:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
-  res.json(result);
 });
 
 // Onboard New Employee (Admin/HR)

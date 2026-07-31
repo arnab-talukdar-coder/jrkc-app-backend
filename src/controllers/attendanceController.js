@@ -166,13 +166,15 @@ export const clockOut = async (req, res) => {
       }
     }
 
-    // Check for existing attendance today
-    const attendance = await Attendance.findOne({ employeeId, date: today });
+    // Check for existing active attendance today
+    const attendance = await Attendance.findOne({ employeeId: finalEmployeeId, date: today, status: 'CLOCKED_IN' });
     if (!attendance) {
+      // Check if they are already clocked out
+      const anyAttendance = await Attendance.findOne({ employeeId: finalEmployeeId, date: today, status: 'CLOCKED_OUT' });
+      if (anyAttendance) {
+        return res.status(400).json({ error: 'You are already clocked out.' });
+      }
       return res.status(400).json({ error: 'No active clock-in session found for today.' });
-    }
-    if (attendance.status === 'CLOCKED_OUT') {
-      return res.status(400).json({ error: 'You are already clocked out.' });
     }
 
     const durationMins = computeDurationMinutes(attendance.clockInTimestamp, now);

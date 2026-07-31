@@ -9,14 +9,23 @@ import {
 
 export const getStatus = async (req, res) => {
   try {
-    const employeeId = req.user?.id;
+    const employeeId = req.user?.id || req.query?.employeeId || req.body?.employeeId;
+    const email = req.user?.email || req.query?.email || req.body?.email;
     const today = getTodayDateStr();
 
-    if (!employeeId) {
+    if (!employeeId && !email) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const attendance = await Attendance.findOne({ employeeId, date: today });
+    let attendance = null;
+    if (employeeId) attendance = await Attendance.findOne({ employeeId, date: today });
+    if (!attendance && email) {
+      // Find employee by email first to get ID
+      const empByEmail = await Employee.findOne({ email: email.toLowerCase().trim() });
+      if (empByEmail && empByEmail.id) {
+        attendance = await Attendance.findOne({ employeeId: empByEmail.id, date: today });
+      }
+    }
 
     if (!attendance) {
       return res.status(200).json({ status: 'NOT_CLOCKED_IN', attendance: null });
@@ -31,20 +40,24 @@ export const getStatus = async (req, res) => {
 
 export const clockIn = async (req, res) => {
   try {
-    const employeeId = req.user?.id;
+    const employeeId = req.user?.id || req.body?.employeeId;
+    const email = req.user?.email || req.body?.email;
     const { latitude, longitude, deviceInfo } = req.body;
     const now = new Date();
     const today = getTodayDateStr();
     const timeStr = getFormattedTimeStr(now);
 
-    if (!employeeId) {
+    if (!employeeId && !email) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const emp = await Employee.findOne({ id: employeeId });
+    const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email?.toLowerCase()?.trim() }] });
     if (!emp) {
       return res.status(404).json({ error: 'Employee not found' });
     }
+    
+    // Normalize employeeId to the one from DB
+    const finalEmployeeId = emp.id;
 
     // Check if Sunday
     if (now.getDay() === 0) {
@@ -68,7 +81,7 @@ export const clockIn = async (req, res) => {
     }
 
     // Check for existing attendance today
-    let attendance = await Attendance.findOne({ employeeId, date: today });
+    let attendance = await Attendance.findOne({ employeeId: finalEmployeeId, date: today });
     if (attendance) {
       if (attendance.status === 'CLOCKED_IN') {
         return res.status(400).json({ error: 'You are already clocked in.' });
@@ -82,7 +95,7 @@ export const clockIn = async (req, res) => {
 
     // Create new Attendance record
     attendance = new Attendance({
-      employeeId: emp.id,
+      employeeId: finalEmployeeId,
       employeeEmail: emp.email,
       date: today,
       status: 'CLOCKED_IN',
@@ -110,20 +123,24 @@ export const clockIn = async (req, res) => {
 
 export const clockOut = async (req, res) => {
   try {
-    const employeeId = req.user?.id;
+    const employeeId = req.user?.id || req.body?.employeeId;
+    const email = req.user?.email || req.body?.email;
     const { latitude, longitude } = req.body;
     const now = new Date();
     const today = getTodayDateStr();
     const timeStr = getFormattedTimeStr(now);
 
-    if (!employeeId) {
+    if (!employeeId && !email) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const emp = await Employee.findOne({ id: employeeId });
+    const emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: email?.toLowerCase()?.trim() }] });
     if (!emp) {
       return res.status(404).json({ error: 'Employee not found' });
     }
+    
+    // Normalize employeeId to the one from DB
+    const finalEmployeeId = emp.id;
 
     // Geofence Validation
     if (emp.assignedLocation && emp.assignedLocation.latitude && emp.assignedLocation.longitude) {

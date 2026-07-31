@@ -62,13 +62,18 @@ import { seedDevelopmentData } from './services/mockDataSeeder.js';
 
 const app = express();
 app.set('trust proxy', 1);
+app.disable('etag');
 const PORT = process.env.PORT || 5000;
 
 // ── SECURITY MIDDLEWARE ──
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-// CORS
+// CORS & No-Cache
 app.use((req, res, next) => {
+  res.header('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.header('Pragma', 'no-cache');
+  res.header('Expires', '0');
+
   const origin = req.headers.origin;
   if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
@@ -77,7 +82,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });

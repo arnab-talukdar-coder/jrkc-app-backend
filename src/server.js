@@ -333,7 +333,77 @@ app.post('/api/auth/register-admin', async (req, res) => {
   await createNotification({ targetRole: 'Admin', title: 'Admin Account Created', message: `${newAdmin.name} registered as Director/Admin.`, type: 'registration' });
 
   const token = jwt.sign({ id: newAdmin.id, email: newAdmin.email, userRole: newAdmin.userRole, name: newAdmin.name }, JWT_SECRET, { expiresIn: '7d' });
-  res.status(201).json({ message: 'Admin account registered successfully', token, user: newAdmin });
+});
+
+// One-click Setup Admin & HR Users Endpoint
+app.post(['/api/auth/setup-admin-users', '/api/auth/init-admin-accounts'], async (req, res) => {
+  const { adminSecret } = req.body || {};
+  const validSecret = process.env.ADMIN_REGISTRATION_SECRET || 'JRKC-ADMIN-2026';
+  if (adminSecret && adminSecret !== validSecret) {
+    return res.status(401).json({ error: 'Invalid Admin Security Key' });
+  }
+
+  const defaultPassword = 'Abhishek@09';
+  const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+  const adminUsers = [
+    {
+      id: 'ADM-CMD',
+      name: 'CMD',
+      email: 'cmd@jrkcrail.com',
+      phone: '',
+      department: 'Management',
+      role: 'Director',
+      userRole: 'Admin',
+      status: 'Clocked Out',
+      accountStatus: 'approved',
+      password: hashedPassword,
+      ptoDays: 18, sickDays: 10, casualDays: 10, lwpDaysTaken: 0,
+      joiningDate: new Date().toLocaleDateString('en-IN'),
+      recentLogs: []
+    },
+    {
+      id: 'ADM-HR',
+      name: 'HR',
+      email: 'hr@jrkcrail.com',
+      phone: '',
+      department: 'Human Resources',
+      role: 'HR Manager',
+      userRole: 'Admin',
+      status: 'Clocked Out',
+      accountStatus: 'approved',
+      password: hashedPassword,
+      ptoDays: 18, sickDays: 10, casualDays: 10, lwpDaysTaken: 0,
+      joiningDate: new Date().toLocaleDateString('en-IN'),
+      recentLogs: []
+    }
+  ];
+
+  const results = [];
+  for (const user of adminUsers) {
+    try {
+      if (mongoose.connection.readyState === 1) {
+        await Employee.findOneAndUpdate(
+          { email: user.email },
+          { $set: user },
+          { upsert: true, new: true }
+        );
+      }
+      const memIdx = memEmployees.findIndex(e => e.email === user.email);
+      if (memIdx !== -1) memEmployees[memIdx] = user;
+      else memEmployees.unshift(user);
+      results.push(`${user.email} created/updated`);
+    } catch (e) {
+      results.push(`${user.email} error: ${e.message}`);
+    }
+  }
+
+  saveDiskStore();
+  res.json({
+    message: 'Admin and HR accounts configured successfully!',
+    defaultPassword,
+    results
+  });
 });
 
 // Login

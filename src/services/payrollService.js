@@ -1,13 +1,60 @@
 /**
  * Dynamic Payroll Service
  * Calculates Mon-Sat working days, LWP days from attendance/leaves/regularizations,
- * applies configurable LWP deduction rules, and computes full salary breakdown.
+ * applies configurable LWP deduction rules, computes full salary breakdown,
+ * and handles dynamic Salary Advance Recovery.
  */
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
+
+/**
+ * Calculates total Gross Monthly Salary dynamically from employee's approved structure.
+ * Gross Monthly Salary = Basic + HRA + DA + Special Allowance + Conveyance + Other Allowances
+ */
+export function calculateGrossSalary(employee) {
+  if (!employee) return 0;
+  const struct = employee.salaryStructure || {};
+  const basic = Number(struct.basic || employee.baseSalary || 0);
+  const hra = Number(struct.hra || Math.round(basic * 0.4));
+  const da = Number(struct.da || 0);
+  const sa = Number(struct.sa || 0);
+  const conveyance = Number(struct.conveyance || 0);
+  const otherAllowances = Number(struct.otherAllowances || employee.allowances || 0);
+  return basic + hra + da + sa + conveyance + otherAllowances;
+}
+
+/**
+ * Generates an exact integer repayment schedule for Salary Advance without decimal rounding loss.
+ */
+export function generateRepaymentSchedule(approvedAmount, tenureMonths = 3, startYear = 2026, startMonthInput = 'June') {
+  const tenure = [3, 6, 12].includes(Number(tenureMonths)) ? Number(tenureMonths) : 3;
+  const totalAmt = Math.round(Number(approvedAmount) || 0);
+  const baseInst = Math.floor(totalAmt / tenure);
+  const remainder = totalAmt - (baseInst * tenure);
+
+  const startMonthIdx = getMonthIndex(startMonthInput);
+
+  const schedule = [];
+  for (let i = 0; i < tenure; i++) {
+    const instMonthIdx = (startMonthIdx + i) % 12;
+    const instYear = startYear + Math.floor((startMonthIdx + i) / 12);
+    const monthName = MONTH_NAMES[instMonthIdx];
+    const amount = i < remainder ? baseInst + 1 : baseInst;
+
+    schedule.push({
+      installmentNo: i + 1,
+      payPeriod: `${monthName} ${instYear}`,
+      year: instYear,
+      month: monthName,
+      amount,
+      status: 'pending'
+    });
+  }
+  return schedule;
+}
 
 /**
  * Calculates total working days in a month excluding Sundays (Monday-Saturday working).
@@ -37,9 +84,18 @@ export function getMonthIndex(monthInput) {
 }
 
 /**
- * Dynamically computes attendance, LWP days, LWP deduction, and full salary breakdown for an employee.
+ * Dynamically computes attendance, LWP days, LWP deduction, Salary Advance recovery,
+ * and full salary breakdown for an employee.
  */
-export function calculateSalaryForEmployee(employee, year, monthInput, lwpDeductionBasis = 'basic', approvals = [], customLwpDays = null) {
+export function calculateSalaryForEmployee(
+  employee,
+  year,
+  monthInput,
+  lwpDeductionBasis = 'basic',
+  approvals = [],
+  customLwpDays = null,
+  salaryAdvances = []
+) {
   const monthIdx = getMonthIndex(monthInput);
   const monthName = MONTH_NAMES[monthIdx];
   const totalWorkingDays = calculateMonSatWorkingDays(year, monthIdx);
@@ -121,7 +177,32 @@ export function calculateSalaryForEmployee(employee, year, monthInput, lwpDeduct
   const lwpDeduction = Math.round(dailyRate * lwpDays);
   const salaryOfAttendance = Math.max(0, basic - lwpDeduction);
 
-  const totalDeductions = employeePf + esi + professionalTax + tds + lwpDeduction;
+  // Salary Advance Recovery calculation
+  let advanceRecovery = 0;
+  let activeAdvanceRecord = null;
+  let advanceOutstanding = 0;
+
+  const targetPeriodStr = `${monthName} ${year}`;
+  const empAdv = salaryAdvances.find(adv =>
+    (adv.employeeId === employee.id || adv.employeeEmail === employee.email) &&
+    adv.status === 'approved' &&
+    adv.outstandingBalance > 0
+  );
+
+  if (empAdv) {
+    activeAdvanceRecord = empAdv;
+    advanceOutstanding = empAdv.outstandingBalance;
+
+    // Check if an installment matches targetPeriodStr or pick the first pending installment
+    const targetInst = empAdv.repaymentSchedule?.find(s => s.payPeriod === targetPeriodStr && s.status === 'pending') ||
+                       empAdv.repaymentSchedule?.find(s => s.status === 'pending');
+
+    if (targetInst) {
+      advanceRecovery = Math.min(targetInst.amount, empAdv.outstandingBalance);
+    }
+  }
+
+  const totalDeductions = employeePf + esi + professionalTax + tds + lwpDeduction + advanceRecovery;
   const totalCtc = grossSalary + employerPf;
   const netPay = Math.max(0, grossSalary - totalDeductions);
 
@@ -154,6 +235,9 @@ export function calculateSalaryForEmployee(employee, year, monthInput, lwpDeduct
     esi,
     professionalTax,
     tds,
+    advance: advanceRecovery,
+    salaryAdvanceRecovery: advanceRecovery,
+    advanceOutstandingBalance: Math.max(0, advanceOutstanding - advanceRecovery),
     totalDeductions,
     netPay
   };

@@ -11,7 +11,7 @@ if (!globalThis.crypto) {
 const __srvFilename = fileURLToPath(import.meta.url);
 const __srvDirname = dirname(__srvFilename);
 const envPath = resolve(__srvDirname, '..', '.env');
-dotenv.config({ path: envPath, override: true });
+dotenv.config({ path: envPath });
 
 console.log(`🔧 Server: Loaded .env from ${envPath}`);
 console.log(`🔧 GMAIL_USER: ${process.env.GMAIL_USER || '❌ NOT SET'}`);

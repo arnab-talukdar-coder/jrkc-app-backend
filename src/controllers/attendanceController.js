@@ -116,6 +116,16 @@ export const clockIn = async (req, res) => {
     emp.status = 'Clocked In';
     emp.clockInTimestamp = now.toISOString();
     emp.clockOutTimestamp = null;
+    
+    if (!emp.recentLogs) emp.recentLogs = [];
+    emp.recentLogs.unshift({
+      type: 'clock_punch',
+      date: today,
+      clockInTime: timeStr,
+      status: 'Active',
+      createdAt: now.toISOString()
+    });
+
     await emp.save();
 
     return res.status(201).json({ message: 'Clocked in successfully', attendance });
@@ -188,6 +198,25 @@ export const clockOut = async (req, res) => {
 
     emp.status = 'Clocked Out';
     emp.clockOutTimestamp = now.toISOString();
+    
+    if (!emp.recentLogs) emp.recentLogs = [];
+    const activeLog = emp.recentLogs.find(l => l.date === today && l.type === 'clock_punch' && l.status === 'Active');
+    if (activeLog) {
+      activeLog.status = 'Completed';
+      activeLog.clockOutTime = timeStr;
+      activeLog.hours = `${Math.floor(durationMins / 60)}h ${durationMins % 60}m`;
+    } else {
+      emp.recentLogs.unshift({
+        type: 'clock_punch',
+        date: today,
+        clockInTime: attendance.clockInTime,
+        clockOutTime: timeStr,
+        hours: `${Math.floor(durationMins / 60)}h ${durationMins % 60}m`,
+        status: 'Completed',
+        createdAt: now.toISOString()
+      });
+    }
+
     await emp.save();
 
     return res.status(200).json({ message: 'Clocked out successfully', attendance });

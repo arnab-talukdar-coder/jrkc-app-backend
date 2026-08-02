@@ -13,7 +13,7 @@ import PDFDocument from 'pdfkit';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const envPath = resolve(__dirname, '..', '..', '.env');
-dotenv.config({ path: envPath, override: true });
+dotenv.config({ path: envPath });
 
 // Startup diagnostics
 console.log(`📧 Email Service: Loading .env from ${envPath}`);

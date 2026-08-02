@@ -128,7 +128,9 @@ async function initDatabase() {
     if (settingsCount === 0) {
       await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
     }
-    await seedDevelopmentData('arnab.talukdar07@gmail.com');
+    if (process.env.NODE_ENV !== 'production') {
+      await seedDevelopmentData('arnab.talukdar07@gmail.com');
+    }
     console.log('✅ Database connected & initial seeding complete.');
   } catch (e) {
     console.error('Database initialization error:', e.message);

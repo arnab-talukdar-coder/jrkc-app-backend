@@ -13,17 +13,23 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 5000,
-        GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
-        GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
-        ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
+        SMTP_HOST: 'cad.crystalregistry.com',
+        SMTP_PORT: 465,
+        SMTP_SECURE: 'true',
+        GMAIL_USER: 'cmd@jrkcrail.com',
+        GMAIL_APP_PASSWORD: 'Abhishek@09',
+        ADMIN_EMAIL: 'cmd@jrkcrail.com',
         SENDER_NAME: 'JRKC Rail Infra'
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 5000,
-        GMAIL_USER: 'gameboyarnab.talukdar1999@gmail.com',
-        GMAIL_APP_PASSWORD: 'crybohbblfigqcqy',
-        ADMIN_EMAIL: 'gameboyarnab.talukdar1999@gmail.com',
+        SMTP_HOST: 'cad.crystalregistry.com',
+        SMTP_PORT: 465,
+        SMTP_SECURE: 'true',
+        GMAIL_USER: 'cmd@jrkcrail.com',
+        GMAIL_APP_PASSWORD: 'Abhishek@09',
+        ADMIN_EMAIL: 'cmd@jrkcrail.com',
         SENDER_NAME: 'JRKC Rail Infra'
       }
     },

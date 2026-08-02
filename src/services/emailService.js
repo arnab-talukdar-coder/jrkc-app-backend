@@ -26,9 +26,9 @@ let transporter = null;
 async function getTransporter() {
   if (transporter) return transporter;
 
-  const emailUser = process.env.GMAIL_USER || process.env.SMTP_USER || 'gameboyarnab.talukdar1999@gmail.com';
-  const emailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || 'crybohbblfigqcqy';
-  const smtpHost = process.env.SMTP_HOST;
+  const emailUser = process.env.GMAIL_USER || process.env.SMTP_USER || 'cmd@jrkcrail.com';
+  const emailPass = process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS || 'Abhishek@09';
+  const smtpHost = process.env.SMTP_HOST || 'cad.crystalregistry.com';
 
   if (emailUser && emailPass) {
     if (smtpHost && !smtpHost.includes('gmail')) {

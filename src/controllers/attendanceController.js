@@ -75,9 +75,10 @@ export const clockIn = async (req, res) => {
       }
       const distance = haversineDistance(latitude, longitude, emp.assignedLocation.latitude, emp.assignedLocation.longitude);
       const radius = emp.assignedLocation.geofenceRadius || 50;
+      const locName = emp.assignedProjectName || emp.assignedLocation?.address || 'Work Site';
       if (distance > radius) {
         return res.status(403).json({
-          error: `You are ${Math.round(distance)}m from your work location. You must be within ${radius}m to clock in.`,
+          error: `You are ${Math.round(distance)}m from ${locName}. You must be within ${radius}m to clock in.`,
           distance: Math.round(distance),
           radius
         });
@@ -90,8 +91,6 @@ export const clockIn = async (req, res) => {
       if (attendance.status === 'CLOCKED_IN') {
         return res.status(400).json({ error: 'You are already clocked in.' });
       }
-      // If we want to allow multiple clock ins per day, we could create a new record or update the existing one.
-      // But the requirement says "Prevent Duplicate Clock In / Clock Out". So one punch per day.
       if (attendance.status === 'CLOCKED_OUT') {
         return res.status(400).json({ error: 'You have already completed your shift for today.' });
       }
@@ -107,12 +106,13 @@ export const clockIn = async (req, res) => {
       clockInTimestamp: now,
       clockInLocation: { latitude, longitude },
       assignedRadius: emp.assignedLocation?.geofenceRadius || 50,
+      projectName: emp.assignedProjectName || emp.assignedLocation?.address || '',
       deviceInfo: deviceInfo || ''
     });
 
     await attendance.save();
 
-    // Update Employee backward compatibility (optional but good for other parts of the app)
+    // Update Employee backward compatibility
     emp.status = 'Clocked In';
     emp.clockInTimestamp = now.toISOString();
     emp.clockOutTimestamp = null;
@@ -123,6 +123,7 @@ export const clockIn = async (req, res) => {
       date: today,
       clockInTime: timeStr,
       status: 'Active',
+      projectName: emp.assignedProjectName || emp.assignedLocation?.address || '',
       createdAt: now.toISOString()
     });
 
@@ -167,9 +168,10 @@ export const clockOut = async (req, res) => {
       }
       const distance = haversineDistance(latitude, longitude, emp.assignedLocation.latitude, emp.assignedLocation.longitude);
       const radius = emp.assignedLocation.geofenceRadius || 50;
+      const locName = emp.assignedProjectName || emp.assignedLocation?.address || 'Work Site';
       if (distance > radius) {
         return res.status(403).json({
-          error: `You are ${Math.round(distance)}m from your work location. You must be within ${radius}m to clock out.`,
+          error: `You are ${Math.round(distance)}m from ${locName}. You must be within ${radius}m to clock out.`,
           distance: Math.round(distance),
           radius
         });

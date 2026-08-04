@@ -100,6 +100,8 @@ const EmployeeSchema = new mongoose.Schema({
 
   // GPS / Location
   assignedLocation: LocationSchema,
+  assignedProjectId: String,
+  assignedProjectName: String,
 
   // FCM Push Token
   fcmToken: String,

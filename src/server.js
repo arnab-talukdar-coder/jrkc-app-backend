@@ -770,6 +770,8 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
         query.$or = [{ name: new RegExp(q, 'i') }, { role: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }];
       }
       dbEmps = await Employee.find(query).sort({ createdAt: -1 });
+    }
+
     // Self-healing: Ensure any approved photo requests automatically update employee avatar in DB & memory
     try {
       if (mongoose.connection.readyState === 1) {

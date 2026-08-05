@@ -5,6 +5,7 @@ module.exports = {
     {
       name: 'jrkc-backend-prod',
       script: './src/server.js',
+      exec_mode: 'fork',
       cwd: __dirname,
       instances: 1,
       autorestart: true,
@@ -36,6 +37,7 @@ module.exports = {
     {
       name: 'jrkc-backend-test',
       script: './src/server.js',
+      exec_mode: 'fork',
       cwd: __dirname,
       instances: 1,
       autorestart: true,
@@ -61,6 +63,7 @@ module.exports = {
     {
       name: 'jrkc-backend-dev-prod',
       script: './src/server.js',
+      exec_mode: 'fork',
       cwd: __dirname,
       instances: 1,
       autorestart: true,

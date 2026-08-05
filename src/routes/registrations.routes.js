@@ -110,7 +110,7 @@ router.post('/:id/approve', authenticateToken, requireRole('HR', 'Director'), as
       await request.save();
 
       // Send credentials email
-      sendApprovalWithCredentials(newUser, tempPassword)
+      sendApprovalWithCredentials(newUser, userPassword)
         .catch(e => console.error('Approval email error:', e.message));
 
       // Notify HR

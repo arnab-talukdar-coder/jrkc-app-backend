@@ -27,8 +27,8 @@ router.get('/:userId', authenticateToken, requireRole('HR', 'Director'), async (
   }
 });
 
-// ── POST /api/v2/salary/configure/:userId  (HR: configure salary) ─────────
-router.post('/configure/:userId', authenticateToken, requireRole('HR'), async (req, res) => {
+// ── POST /api/v2/salary/configure/:userId  (HR/Director: configure salary) ─────────
+router.post('/configure/:userId', authenticateToken, requireRole('HR', 'Director', 'Admin'), async (req, res) => {
   try {
     const targetUser = await User.findById(req.params.userId).select('name department userRole accountStatus');
     if (!targetUser) return res.status(404).json({ error: 'Employee not found.' });
@@ -52,7 +52,7 @@ router.post('/configure/:userId', authenticateToken, requireRole('HR'), async (r
         department: targetUser.department,
         ...data,
         ...totals,
-        status: 'pending_director',
+        status: req.user.userRole === 'Director' || req.user.userRole === 'Admin' ? 'approved' : 'pending_director',
         configuredBy: req.user.id,
         configuredByName: req.user.name,
         configuredAt: new Date(),
@@ -61,18 +61,12 @@ router.post('/configure/:userId', authenticateToken, requireRole('HR'), async (r
     );
 
     // Update user flag
-    await User.findByIdAndUpdate(req.params.userId, { salaryConfigured: true, salaryApproved: false });
-
-    // Notify Director
-    await Notification.create({
-      targetRole: 'Director',
-      title: 'Salary Structure Pending Approval',
-      message: `HR has configured salary for ${targetUser.name}. Please review and approve.`,
-      type: 'salary_configured',
-      refId: struct._id.toString(),
+    await User.findByIdAndUpdate(req.params.userId, {
+      salaryConfigured: true,
+      salaryApproved: req.user.userRole === 'Director' || req.user.userRole === 'Admin'
     });
 
-    res.json({ message: 'Salary structure configured. Pending Director approval.', struct });
+    res.json({ message: 'Salary structure configured.', struct });
   } catch (err) {
     console.error('Salary configure error:', err);
     res.status(500).json({ error: 'Failed to configure salary.' });
@@ -80,7 +74,7 @@ router.post('/configure/:userId', authenticateToken, requireRole('HR'), async (r
 });
 
 // ── PATCH /api/v2/salary/:id/approve  (Director: approve) ─────────────────
-router.patch('/:id/approve', authenticateToken, requireRole('Director'), async (req, res) => {
+router.patch('/:id/approve', authenticateToken, requireRole('Director', 'Admin'), async (req, res) => {
   try {
     const struct = await SalaryStructure.findById(req.params.id);
     if (!struct) return res.status(404).json({ error: 'Salary structure not found.' });
@@ -121,8 +115,8 @@ router.patch('/:id/approve', authenticateToken, requireRole('Director'), async (
   }
 });
 
-// ── PATCH /api/v2/salary/:id/update  (Director: edit approved salary) ─────
-router.patch('/:id/update', authenticateToken, requireRole('Director'), async (req, res) => {
+// ── PATCH /api/v2/salary/:id/update  (HR & Director: edit approved salary) ─────
+router.patch('/:id/update', authenticateToken, requireRole('HR', 'Director', 'Admin'), async (req, res) => {
   try {
     const struct = await SalaryStructure.findById(req.params.id);
     if (!struct) return res.status(404).json({ error: 'Salary structure not found.' });

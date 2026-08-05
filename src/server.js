@@ -752,7 +752,42 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
         query.$or = [{ name: new RegExp(q, 'i') }, { role: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }];
       }
       dbEmps = await Employee.find(query).sort({ createdAt: -1 });
-    }
+    // Self-healing: Ensure any approved photo requests automatically update employee avatar in DB & memory
+    try {
+      if (mongoose.connection.readyState === 1) {
+        const approvedPhotoApps = await Approval.find({
+          status: 'approved',
+          type: { $in: ['Profile Picture Approval', 'Photo Change'] }
+        });
+        if (Array.isArray(approvedPhotoApps) && approvedPhotoApps.length > 0) {
+          for (const pApp of approvedPhotoApps) {
+            const photoUrl = pApp.newAvatarUrl || pApp.subDetails;
+            if (photoUrl) {
+              const qOr = [];
+              if (pApp.employeeId) qOr.push({ id: pApp.employeeId });
+              if (pApp.email) qOr.push({ email: pApp.email.toLowerCase().trim() });
+              if (pApp.employeeName) qOr.push({ name: pApp.employeeName });
+              if (qOr.length > 0) {
+                await Employee.updateMany(
+                  { $or: qOr, avatar: { $ne: photoUrl } },
+                  { avatar: photoUrl, pendingAvatar: null, photoStatus: 'approved' }
+                );
+              }
+            }
+          }
+          // Refresh dbEmps after self-healing
+          let query = {};
+          if (department && department !== 'All') query.department = new RegExp(`^${department}$`, 'i');
+          if (hrId) query.assignedHrId = hrId;
+          if (userRole) query.userRole = userRole;
+          if (search) {
+            const q = search.toString();
+            query.$or = [{ name: new RegExp(q, 'i') }, { role: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }];
+          }
+          dbEmps = await Employee.find(query).sort({ createdAt: -1 });
+        }
+      }
+    } catch (e) {}
 
     // Combine memory store first, then DB second so DB status ALWAYS overrides memory store
     const empMap = new Map();
@@ -1033,36 +1068,93 @@ app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), a
 
   item.status = nextStatus;
 
-  // Update employee leave balance on final approval
-  let emp = memEmployees.find(e => e.id === item.employeeId || e.name === item.employeeName);
+  // Update employee leave balance or avatar on approval
+  let emp = memEmployees.find(e => 
+    (item.employeeId && e.id === item.employeeId) || 
+    (item.email && e.email?.toLowerCase() === item.email.toLowerCase()) ||
+    (item.employeeEmail && e.email?.toLowerCase() === item.employeeEmail.toLowerCase()) ||
+    (item.employeeName && e.name?.toLowerCase() === item.employeeName.toLowerCase())
+  );
 
-  if (nextStatus === 'approved' && emp) {
-    if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
+  if (!emp && mongoose.connection.readyState === 1) {
+    try {
+      const empOr = [];
+      if (item.employeeId) empOr.push({ id: item.employeeId });
+      if (item.email) empOr.push({ email: item.email.toLowerCase().trim() });
+      if (item.employeeEmail) empOr.push({ email: item.employeeEmail.toLowerCase().trim() });
+      if (item.employeeName) empOr.push({ name: item.employeeName });
+      if (empOr.length > 0) {
+        emp = await Employee.findOne({ $or: empOr });
+      }
+    } catch (e) {}
+  }
+
+  const isPhotoType = item.type === 'Profile Picture Approval' || item.type === 'Photo Change' || item.type?.includes('Photo') || item.type?.includes('Picture');
+
+  if (nextStatus === 'approved') {
+    if (isPhotoType) {
       const photoToApply = item.newAvatarUrl || item.subDetails;
-      if (photoToApply) { emp.avatar = photoToApply; emp.pendingAvatar = null; emp.photoStatus = 'approved'; }
-    } else if (item.isLwp || item.type?.includes('LWP')) {
-      emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + (item.totalDays || 0);
-    } else if (item.type?.includes('Casual')) {
-      emp.casualDaysTaken = (emp.casualDaysTaken || 0) + (item.totalDays || 0);
-    } else if (item.type?.includes('Sick')) {
-      emp.sickDaysTaken = (emp.sickDaysTaken || 0) + (item.totalDays || 0);
-    } else if (item.type?.includes('Annual') || item.type?.includes('Earned') || item.type?.includes('PTO')) {
-      emp.ptoDaysTaken = (emp.ptoDaysTaken || 0) + (item.totalDays || 0);
+      if (photoToApply) {
+        if (emp) { emp.avatar = photoToApply; emp.pendingAvatar = null; emp.photoStatus = 'approved'; }
+        if (mongoose.connection.readyState === 1) {
+          try {
+            const empOr = [];
+            if (emp && emp.id) empOr.push({ id: emp.id });
+            if (emp && emp.email) empOr.push({ email: emp.email.toLowerCase().trim() });
+            if (item.employeeId) empOr.push({ id: item.employeeId });
+            if (item.email) empOr.push({ email: item.email.toLowerCase().trim() });
+            if (item.employeeEmail) empOr.push({ email: item.employeeEmail.toLowerCase().trim() });
+            if (item.employeeName) empOr.push({ name: item.employeeName });
+            if (empOr.length > 0) {
+              const updatedDbEmp = await Employee.findOneAndUpdate(
+                { $or: empOr },
+                { avatar: photoToApply, pendingAvatar: null, photoStatus: 'approved' },
+                { new: true }
+              );
+              if (updatedDbEmp && !memEmployees.some(m => m.id === updatedDbEmp.id || m.email === updatedDbEmp.email)) {
+                memEmployees.unshift(updatedDbEmp.toObject());
+              }
+            }
+          } catch (err) {
+            console.error('Failed to apply approved avatar in DB:', err.message);
+          }
+        }
+      }
+    } else if (emp) {
+      if (item.isLwp || item.type?.includes('LWP')) {
+        emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + (item.totalDays || 0);
+      } else if (item.type?.includes('Casual')) {
+        emp.casualDaysTaken = (emp.casualDaysTaken || 0) + (item.totalDays || 0);
+      } else if (item.type?.includes('Sick')) {
+        emp.sickDaysTaken = (emp.sickDaysTaken || 0) + (item.totalDays || 0);
+      } else if (item.type?.includes('Annual') || item.type?.includes('Earned') || item.type?.includes('PTO')) {
+        emp.ptoDaysTaken = (emp.ptoDaysTaken || 0) + (item.totalDays || 0);
+      }
     }
     saveDiskStore();
-  } else if (nextStatus === 'rejected' && emp && (item.type === 'Profile Picture Approval' || item.type === 'Photo Change')) {
-    emp.pendingAvatar = null; emp.photoStatus = 'rejected';
+  } else if (nextStatus === 'rejected' && isPhotoType) {
+    if (emp) { emp.pendingAvatar = null; emp.photoStatus = 'rejected'; }
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const empOr = [];
+        if (emp && emp.id) empOr.push({ id: emp.id });
+        if (emp && emp.email) empOr.push({ email: emp.email.toLowerCase().trim() });
+        if (item.employeeId) empOr.push({ id: item.employeeId });
+        if (item.email) empOr.push({ email: item.email.toLowerCase().trim() });
+        if (item.employeeName) empOr.push({ name: item.employeeName });
+        if (empOr.length > 0) {
+          await Employee.findOneAndUpdate({ $or: empOr }, { pendingAvatar: null, photoStatus: 'rejected' });
+        }
+      } catch (e) {}
+    }
+    saveDiskStore();
   }
 
   try {
     if (mongoose.connection.readyState === 1) {
       await Approval.findOneAndUpdate({ id }, { status: nextStatus, hrApprovedBy: item.hrApprovedBy, hrApprovedAt: item.hrApprovedAt, adminApprovedBy: item.adminApprovedBy, adminApprovedAt: item.adminApprovedAt });
-      if (nextStatus === 'approved' && emp) {
-        if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
-          await Employee.findOneAndUpdate({ $or: [{ id: emp.id }, { email: emp.email }] }, { avatar: item.newAvatarUrl || item.subDetails, pendingAvatar: null, photoStatus: 'approved' });
-        } else {
-          await Employee.findOneAndUpdate({ $or: [{ id: emp.id }, { email: emp.email }] }, { lwpDaysTaken: emp.lwpDaysTaken, ptoDaysTaken: emp.ptoDaysTaken, sickDaysTaken: emp.sickDaysTaken, casualDaysTaken: emp.casualDaysTaken });
-        }
+      if (nextStatus === 'approved' && emp && !isPhotoType) {
+        await Employee.findOneAndUpdate({ $or: [{ id: emp.id }, { email: emp.email }] }, { lwpDaysTaken: emp.lwpDaysTaken, ptoDaysTaken: emp.ptoDaysTaken, sickDaysTaken: emp.sickDaysTaken, casualDaysTaken: emp.casualDaysTaken });
       }
     }
   } catch (e) {}

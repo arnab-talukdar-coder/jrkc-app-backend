@@ -845,19 +845,23 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
   }
 });
 
-// Onboard New Employee (Admin/HR)
+// Onboard New Employee (Admin/HR/Director)
 app.post('/api/employees', authenticateToken, requireRole('Admin', 'HR'), async (req, res) => {
-  const { name, email, phone, department, role, userRole, password, joiningDate, dateOfBirth, dob, bloodGroup, station, validity, salaryStructure } = req.body;
+  const { name, email, phone, department, role, userRole, joiningDate, dateOfBirth, dob, bloodGroup, station, validity, salaryStructure } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
   if (!validateEmail(email)) return res.status(400).json({ error: 'Invalid email address' });
 
-  const plainPassword = password || 'Employee@123';
+  // Auto-generate a secure random password
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
+  let plainPassword = '';
+  for (let i = 0; i < 10; i++) plainPassword += chars[Math.floor(Math.random() * chars.length)];
+
   const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
   const newEmp = {
     id: `EMP-${Date.now().toString(36).toUpperCase()}`,
     name: sanitizeString(name), email: email.toLowerCase().trim(), phone: phone || '',
-    department: sanitizeString(department) || 'General', role: sanitizeString(role) || 'Employee',
+    department: sanitizeString(department) || 'Operations', role: sanitizeString(role) || 'Site Engineer',
     userRole: userRole || 'Employee', status: 'Clocked Out', accountStatus: 'approved',
     password: hashedPassword,
     ptoDays: 18, sickDays: 10, casualDays: 10, lwpDaysTaken: 0,
@@ -872,7 +876,23 @@ app.post('/api/employees', authenticateToken, requireRole('Admin', 'HR'), async 
   try { if (mongoose.connection.readyState === 1) await Employee.create(newEmp); } catch (e) { console.error('Onboard error:', e.message); }
   memEmployees.unshift(newEmp);
   saveDiskStore();
-  res.status(201).json(newEmp);
+
+  // Send welcome email with auto-generated password
+  try {
+    await sendRegistrationConfirmationToEmployee({
+      name: newEmp.name,
+      email: newEmp.email,
+      password: plainPassword,
+      role: newEmp.role,
+      department: newEmp.department,
+      employeeId: newEmp.id
+    });
+    console.log(`📧 Welcome email with password sent to ${newEmp.email}`);
+  } catch (emailErr) {
+    console.error('⚠️ Failed to send welcome email:', emailErr.message);
+  }
+
+  res.status(201).json({ ...newEmp, password: undefined });
 });
 
 // Profile Photo Change Request

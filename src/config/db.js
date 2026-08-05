@@ -16,7 +16,8 @@ export async function connectDB() {
 
     console.log(`Connecting to MongoDB (${env} environment)...`);
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 2000 // 2s timeout for local development fallback
+      serverSelectionTimeoutMS: 2000,
+      connectTimeoutMS: 3000
     });
     console.log(`MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
   } catch (error) {

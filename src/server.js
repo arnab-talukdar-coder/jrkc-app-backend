@@ -123,18 +123,22 @@ const saveDiskStore = () => {};
 async function initDatabase() {
   await connectDB();
   try {
-    const bankCount = await BankDetails.countDocuments();
-    if (bankCount === 0) {
-      await BankDetails.create(INITIAL_BANK_DETAILS);
+    if (mongoose.connection.readyState === 1) {
+      const bankCount = await BankDetails.countDocuments();
+      if (bankCount === 0) {
+        await BankDetails.create(INITIAL_BANK_DETAILS);
+      }
+      const settingsCount = await HRSettings.countDocuments();
+      if (settingsCount === 0) {
+        await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
+      }
+      if (process.env.NODE_ENV !== 'production') {
+        await seedDevelopmentData('arnab.talukdar07@gmail.com');
+      }
+      console.log('✅ Database connected & initial seeding complete.');
+    } else {
+      console.log('⚡ Operating in fallback mode (MongoDB not connected).');
     }
-    const settingsCount = await HRSettings.countDocuments();
-    if (settingsCount === 0) {
-      await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
-    }
-    if (process.env.NODE_ENV !== 'production') {
-      await seedDevelopmentData('arnab.talukdar07@gmail.com');
-    }
-    console.log('✅ Database connected & initial seeding complete.');
   } catch (e) {
     console.error('Database initialization error:', e.message);
   }
@@ -2261,6 +2265,14 @@ setInterval(async () => {
 }, 60 * 1000);
 
 // ── START SERVER ──
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 JRKC HR Portal API listening on http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use by another process!`);
+  } else {
+    console.error(`❌ Server error:`, err);
+  }
 });

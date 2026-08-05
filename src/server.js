@@ -1090,20 +1090,35 @@ app.get('/api/approvals', authenticateToken, async (req, res) => {
   res.json(list);
 });
 
-// Approve/Reject Leave (2-step: HR → Admin)
-app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), async (req, res) => {
+// Approve/Reject/Edit Leave (2-step: HR → Admin, plus HR/Director Override & Correction)
+app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR', 'Director'), async (req, res) => {
   const { id } = req.params;
-  const { status, action, userRole, approverName } = req.body;
+  const { status, action, userRole, approverName, remarks, details, totalDays } = req.body;
 
   let item = null;
   try { if (mongoose.connection.readyState === 1) item = await Approval.findOne({ id }); } catch (e) {}
   if (!item) item = memApprovals.find(a => a.id === id);
   if (!item) return res.status(404).json({ error: 'Approval request not found' });
 
-  let nextStatus = status;
+  const prevStatus = item.status;
+  if (details !== undefined) item.details = sanitizeString(details);
+  if (req.body.subDetails !== undefined) item.subDetails = sanitizeString(req.body.subDetails);
+  if (totalDays !== undefined) item.totalDays = Number(totalDays);
+  if (remarks !== undefined) item.remarks = sanitizeString(remarks);
 
-  // Multi-stage status transition
-  if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
+  let nextStatus = status || item.status;
+
+  // Multi-stage & Override status transition
+  if (action === 'override' || action === 'edit') {
+    nextStatus = status || item.status;
+    if (userRole === 'Admin' || req.user.userRole === 'Admin' || req.user.userRole === 'Director') {
+      item.adminApprovedBy = approverName || req.user.name;
+      item.adminApprovedAt = new Date().toISOString();
+    } else {
+      item.hrApprovedBy = approverName || req.user.name;
+      item.hrApprovedAt = new Date().toISOString();
+    }
+  } else if (item.type === 'Profile Picture Approval' || item.type === 'Photo Change') {
     if (status === 'approved' || action === 'hr_approve' || action === 'admin_approve') {
       nextStatus = 'approved';
       item.hrApprovedBy = approverName || req.user.name;
@@ -1122,7 +1137,7 @@ app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), a
 
   item.status = nextStatus;
 
-  // Update employee leave balance or avatar on approval
+  // Find target employee
   let emp = memEmployees.find(e => 
     (item.employeeId && e.id === item.employeeId) || 
     (item.email && e.email?.toLowerCase() === item.email.toLowerCase()) ||
@@ -1145,47 +1160,61 @@ app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), a
 
   const isPhotoType = item.type === 'Profile Picture Approval' || item.type === 'Photo Change' || item.type?.includes('Photo') || item.type?.includes('Picture');
 
-  if (nextStatus === 'approved') {
-    if (isPhotoType) {
-      const photoToApply = item.newAvatarUrl || item.subDetails;
-      if (photoToApply) {
-        if (emp) { emp.avatar = photoToApply; emp.pendingAvatar = null; emp.photoStatus = 'approved'; }
-        if (mongoose.connection.readyState === 1) {
-          try {
-            const empOr = [];
-            if (emp && emp.id) empOr.push({ id: emp.id });
-            if (emp && emp.email) empOr.push({ email: emp.email.toLowerCase().trim() });
-            if (item.employeeId) empOr.push({ id: item.employeeId });
-            if (item.email) empOr.push({ email: item.email.toLowerCase().trim() });
-            if (item.employeeEmail) empOr.push({ email: item.employeeEmail.toLowerCase().trim() });
-            if (item.employeeName) empOr.push({ name: item.employeeName });
-            if (empOr.length > 0) {
-              const updatedDbEmp = await Employee.findOneAndUpdate(
-                { $or: empOr },
-                { avatar: photoToApply, pendingAvatar: null, photoStatus: 'approved' },
-                { new: true }
-              );
-              if (updatedDbEmp && !memEmployees.some(m => m.id === updatedDbEmp.id || m.email === updatedDbEmp.email)) {
-                memEmployees.unshift(updatedDbEmp.toObject());
-              }
+  // Adjust leave balances if status was reverted or newly approved
+  if (prevStatus === 'approved' && nextStatus !== 'approved' && emp && !isPhotoType) {
+    const days = item.totalDays || 1;
+    if (item.isLwp || item.type?.includes('LWP')) {
+      emp.lwpDaysTaken = Math.max(0, (emp.lwpDaysTaken || 0) - days);
+    } else if (item.type?.includes('Casual')) {
+      emp.casualDaysTaken = Math.max(0, (emp.casualDaysTaken || 0) - days);
+    } else if (item.type?.includes('Sick')) {
+      emp.sickDaysTaken = Math.max(0, (emp.sickDaysTaken || 0) - days);
+    } else if (item.type?.includes('Annual') || item.type?.includes('Earned') || item.type?.includes('PTO')) {
+      emp.ptoDaysTaken = Math.max(0, (emp.ptoDaysTaken || 0) - days);
+    }
+  }
+
+  if (prevStatus !== 'approved' && nextStatus === 'approved' && emp && !isPhotoType) {
+    const days = item.totalDays || 1;
+    if (item.isLwp || item.type?.includes('LWP')) {
+      emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + days;
+    } else if (item.type?.includes('Casual')) {
+      emp.casualDaysTaken = (emp.casualDaysTaken || 0) + days;
+    } else if (item.type?.includes('Sick')) {
+      emp.sickDaysTaken = (emp.sickDaysTaken || 0) + days;
+    } else if (item.type?.includes('Annual') || item.type?.includes('Earned') || item.type?.includes('PTO')) {
+      emp.ptoDaysTaken = (emp.ptoDaysTaken || 0) + days;
+    }
+  }
+
+  if (nextStatus === 'approved' && isPhotoType) {
+    const photoToApply = item.newAvatarUrl || item.subDetails;
+    if (photoToApply) {
+      if (emp) { emp.avatar = photoToApply; emp.pendingAvatar = null; emp.photoStatus = 'approved'; }
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const empOr = [];
+          if (emp && emp.id) empOr.push({ id: emp.id });
+          if (emp && emp.email) empOr.push({ email: emp.email.toLowerCase().trim() });
+          if (item.employeeId) empOr.push({ id: item.employeeId });
+          if (item.email) empOr.push({ email: item.email.toLowerCase().trim() });
+          if (item.employeeEmail) empOr.push({ email: item.employeeEmail.toLowerCase().trim() });
+          if (item.employeeName) empOr.push({ name: item.employeeName });
+          if (empOr.length > 0) {
+            const updatedDbEmp = await Employee.findOneAndUpdate(
+              { $or: empOr },
+              { avatar: photoToApply, pendingAvatar: null, photoStatus: 'approved' },
+              { new: true }
+            );
+            if (updatedDbEmp && !memEmployees.some(m => m.id === updatedDbEmp.id || m.email === updatedDbEmp.email)) {
+              memEmployees.unshift(updatedDbEmp.toObject());
             }
-          } catch (err) {
-            console.error('Failed to apply approved avatar in DB:', err.message);
           }
+        } catch (err) {
+          console.error('Failed to apply approved avatar in DB:', err.message);
         }
       }
-    } else if (emp) {
-      if (item.isLwp || item.type?.includes('LWP')) {
-        emp.lwpDaysTaken = (emp.lwpDaysTaken || 0) + (item.totalDays || 0);
-      } else if (item.type?.includes('Casual')) {
-        emp.casualDaysTaken = (emp.casualDaysTaken || 0) + (item.totalDays || 0);
-      } else if (item.type?.includes('Sick')) {
-        emp.sickDaysTaken = (emp.sickDaysTaken || 0) + (item.totalDays || 0);
-      } else if (item.type?.includes('Annual') || item.type?.includes('Earned') || item.type?.includes('PTO')) {
-        emp.ptoDaysTaken = (emp.ptoDaysTaken || 0) + (item.totalDays || 0);
-      }
     }
-    saveDiskStore();
   } else if (nextStatus === 'rejected' && isPhotoType) {
     if (emp) { emp.pendingAvatar = null; emp.photoStatus = 'rejected'; }
     if (mongoose.connection.readyState === 1) {
@@ -1201,14 +1230,35 @@ app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), a
         }
       } catch (e) {}
     }
-    saveDiskStore();
   }
+  saveDiskStore();
 
   try {
     if (mongoose.connection.readyState === 1) {
-      await Approval.findOneAndUpdate({ id }, { status: nextStatus, hrApprovedBy: item.hrApprovedBy, hrApprovedAt: item.hrApprovedAt, adminApprovedBy: item.adminApprovedBy, adminApprovedAt: item.adminApprovedAt });
-      if (nextStatus === 'approved' && emp && !isPhotoType) {
-        await Employee.findOneAndUpdate({ $or: [{ id: emp.id }, { email: emp.email }] }, { lwpDaysTaken: emp.lwpDaysTaken, ptoDaysTaken: emp.ptoDaysTaken, sickDaysTaken: emp.sickDaysTaken, casualDaysTaken: emp.casualDaysTaken });
+      await Approval.findOneAndUpdate(
+        { id },
+        {
+          status: nextStatus,
+          details: item.details,
+          subDetails: item.subDetails,
+          totalDays: item.totalDays,
+          remarks: item.remarks,
+          hrApprovedBy: item.hrApprovedBy,
+          hrApprovedAt: item.hrApprovedAt,
+          adminApprovedBy: item.adminApprovedBy,
+          adminApprovedAt: item.adminApprovedAt
+        }
+      );
+      if (emp && !isPhotoType) {
+        await Employee.findOneAndUpdate(
+          { $or: [{ id: emp.id }, { email: emp.email }] },
+          {
+            lwpDaysTaken: emp.lwpDaysTaken,
+            ptoDaysTaken: emp.ptoDaysTaken,
+            sickDaysTaken: emp.sickDaysTaken,
+            casualDaysTaken: emp.casualDaysTaken
+          }
+        );
       }
     }
   } catch (e) {}
@@ -1221,10 +1271,9 @@ app.patch('/api/approvals/:id', authenticateToken, requireRole('Admin', 'HR'), a
   } else if (nextStatus === 'approved') {
     sendLeaveStatusNotification(item, empEmail).catch(err => console.error('Leave email error:', err));
     await createNotification({ targetRole: 'Employee', recipientEmail: empEmail, title: 'Leave Fully Approved ✅', message: `Your ${item.type} (${item.totalDays} day(s)) has been approved.`, type: 'leave_approval' });
-    await createNotification({ targetRole: 'HR', recipientId: item.assignedHrId, title: 'Leave Finalized', message: `${item.employeeName}'s ${item.type} approved by Director.`, type: 'leave_approval' });
   } else if (nextStatus === 'rejected') {
     sendLeaveStatusNotification(item, empEmail).catch(err => console.error('Leave email error:', err));
-    await createNotification({ targetRole: 'Employee', recipientEmail: empEmail, title: 'Leave Request Rejected', message: `Your ${item.type} request was rejected.`, type: 'leave_rejection' });
+    await createNotification({ targetRole: 'Employee', recipientEmail: empEmail, title: 'Approval Decision Updated / Rejected ❌', message: `Your ${item.type} decision was updated to rejected.`, type: 'leave_rejection' });
   }
 
   res.json(item);

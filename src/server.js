@@ -896,21 +896,24 @@ app.post('/api/attendance/timesheet-entry', authenticateToken, async (req, res) 
 // 5. LEAVE REQUESTS & APPROVAL WORKFLOW
 // ======================================================
 
-// HR changes leave quota
-app.put('/api/hr/employees/:id/leave-quota', authenticateToken, requireRole('Admin', 'HR'), async (req, res) => {
+// HR or Director changes salary structure or leave quota
+const handleUpdateEmployeeQuotaSalary = async (req, res) => {
   const { id } = req.params;
-  const { ptoDays, sickDays, casualDays, baseSalary } = req.body;
+  const { ptoDays, sickDays, casualDays, baseSalary, allowances, taxDeductions, salaryStructure } = req.body;
   const updateData = {};
   if (ptoDays !== undefined) updateData.ptoDays = Number(ptoDays);
   if (sickDays !== undefined) updateData.sickDays = Number(sickDays);
   if (casualDays !== undefined) updateData.casualDays = Number(casualDays);
   if (baseSalary !== undefined) updateData.baseSalary = Number(baseSalary);
+  if (allowances !== undefined) updateData.allowances = Number(allowances);
+  if (taxDeductions !== undefined) updateData.taxDeductions = Number(taxDeductions);
+  if (salaryStructure !== undefined && typeof salaryStructure === 'object') updateData.salaryStructure = salaryStructure;
 
   try {
     if (mongoose.connection.readyState === 1) {
       const updated = await Employee.findOneAndUpdate({ id }, updateData, { new: true });
       if (updated) {
-        await createNotification({ targetRole: 'Employee', recipientId: id, title: 'Leave Quota Updated', message: `Your HR updated your leave quota.`, type: 'quota_update' });
+        await createNotification({ targetRole: 'Employee', recipientId: id, title: 'Salary & Quota Updated', message: `Your salary structure / leave quota has been updated.`, type: 'quota_update' });
         return res.json(updated);
       }
     }
@@ -919,11 +922,15 @@ app.put('/api/hr/employees/:id/leave-quota', authenticateToken, requireRole('Adm
   if (emp) {
     Object.assign(emp, updateData);
     saveDiskStore();
-    await createNotification({ targetRole: 'Employee', recipientId: id, title: 'Leave Quota Updated', message: `Your HR updated your leave quota.`, type: 'quota_update' });
+    await createNotification({ targetRole: 'Employee', recipientId: id, title: 'Salary & Quota Updated', message: `Your salary structure / leave quota has been updated.`, type: 'quota_update' });
     return res.json(emp);
   }
   res.status(404).json({ error: 'Employee not found' });
-});
+};
+
+app.put('/api/hr/employees/:id/leave-quota', authenticateToken, requireRole('Admin', 'HR', 'Director'), handleUpdateEmployeeQuotaSalary);
+app.put('/api/hr/employees/:id/salary', authenticateToken, requireRole('Admin', 'HR', 'Director'), handleUpdateEmployeeQuotaSalary);
+
 
 // Submit Leave Request
 app.post('/api/approvals', authenticateToken, async (req, res) => {

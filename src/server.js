@@ -3,6 +3,13 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import crypto from 'crypto';
 
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection:', reason);
+});
+
 if (!globalThis.crypto) {
   globalThis.crypto = crypto;
 }
@@ -12,10 +19,6 @@ const __srvFilename = fileURLToPath(import.meta.url);
 const __srvDirname = dirname(__srvFilename);
 const envPath = resolve(__srvDirname, '..', '.env');
 dotenv.config({ path: envPath });
-
-console.log(`🔧 Server: Loaded .env from ${envPath}`);
-console.log(`🔧 GMAIL_USER: ${process.env.GMAIL_USER || '❌ NOT SET'}`);
-console.log(`🔧 JWT_SECRET: ${process.env.JWT_SECRET ? '✅ loaded' : '⚠️ using default'}`);
 
 import fs from 'fs';
 import path from 'path';
@@ -67,6 +70,17 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('etag');
 const PORT = process.env.PORT || 5000;
+
+// ── FAST HEALTH CHECK (Before Middleware & Rate Limiters) ──
+app.get(['/', '/health', '/api', '/api/health'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'JRKC HR Portal REST API',
+    environment: process.env.NODE_ENV || 'development',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'fallback',
+    timestamp: new Date()
+  });
+});
 
 // ── SECURITY MIDDLEWARE ──
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));

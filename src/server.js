@@ -966,6 +966,60 @@ const handleUpdateEmployeeQuotaSalary = async (req, res) => {
 app.put('/api/hr/employees/:id/leave-quota', authenticateToken, requireRole('Admin', 'HR', 'Director'), handleUpdateEmployeeQuotaSalary);
 app.put('/api/hr/employees/:id/salary', authenticateToken, requireRole('Admin', 'HR', 'Director'), handleUpdateEmployeeQuotaSalary);
 
+// HR or Director updates full employee profile
+app.put('/api/employees/:id', authenticateToken, requireRole('Admin', 'HR', 'Director'), async (req, res) => {
+  const { id } = req.params;
+  const {
+    name, role, department, email, phone, reportingManager,
+    ptoDays, sickDays, casualDays, dob, dateOfBirth, bloodGroup, station,
+    baseSalary, allowances, taxDeductions, assignedHrId, assignedHrName, assignedHrEmail
+  } = req.body;
+
+  const updateData = {};
+  if (name !== undefined) updateData.name = sanitizeString(name);
+  if (role !== undefined) updateData.role = sanitizeString(role);
+  if (department !== undefined) updateData.department = sanitizeString(department);
+  if (email !== undefined) updateData.email = sanitizeString(email).toLowerCase();
+  if (phone !== undefined) updateData.phone = sanitizeString(phone);
+  if (reportingManager !== undefined) updateData.reportingManager = sanitizeString(reportingManager);
+  if (ptoDays !== undefined) updateData.ptoDays = Number(ptoDays);
+  if (sickDays !== undefined) updateData.sickDays = Number(sickDays);
+  if (casualDays !== undefined) updateData.casualDays = Number(casualDays);
+  if (dob !== undefined) updateData.dob = sanitizeString(dob);
+  if (dateOfBirth !== undefined) updateData.dateOfBirth = sanitizeString(dateOfBirth);
+  if (bloodGroup !== undefined) updateData.bloodGroup = sanitizeString(bloodGroup);
+  if (station !== undefined) updateData.station = sanitizeString(station);
+  if (baseSalary !== undefined) updateData.baseSalary = Number(baseSalary);
+  if (allowances !== undefined) updateData.allowances = Number(allowances);
+  if (taxDeductions !== undefined) updateData.taxDeductions = Number(taxDeductions);
+  if (assignedHrId !== undefined) updateData.assignedHrId = assignedHrId;
+  if (assignedHrName !== undefined) updateData.assignedHrName = assignedHrName;
+  if (assignedHrEmail !== undefined) updateData.assignedHrEmail = assignedHrEmail;
+
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const updated = await Employee.findOneAndUpdate({ $or: [{ id }, { email: id }] }, updateData, { new: true });
+      if (updated) {
+        await createNotification({ recipientId: id, title: 'Profile Updated', message: 'Your profile details have been updated by HR / Director.', type: 'profile_update' });
+        return res.json(updated);
+      }
+    }
+  } catch (e) {}
+
+  const emp = memEmployees.find(e => e.id === id || e.email === id);
+  if (emp) {
+    Object.assign(emp, updateData);
+    saveDiskStore();
+    return res.json(emp);
+  }
+  res.status(404).json({ error: 'Employee not found' });
+});
+
+app.put('/api/hr/employees/:id/profile', authenticateToken, requireRole('Admin', 'HR', 'Director'), async (req, res) => {
+  req.url = `/api/employees/${req.params.id}`;
+  app._router.handle(req, res);
+});
+
 
 // Submit Leave Request
 app.post('/api/approvals', authenticateToken, async (req, res) => {

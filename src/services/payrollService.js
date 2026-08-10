@@ -102,18 +102,29 @@ export function calculateSalaryForEmployee(
 
   // Extract salary structure from employee profile
   const struct = employee.salaryStructure || {};
-  const basic = Number(struct.basic || employee.baseSalary || 0);
-  const hra = Number(struct.hra || Math.round(basic * 0.4));
-  const da = Number(struct.da || 0);
-  const sa = Number(struct.sa || 0);
-  const conveyance = Number(struct.conveyance || 0);
-  const otherAllowances = Number(struct.otherAllowances || employee.allowances || 0);
+  const basic = employee.baseSalary !== undefined ? Number(employee.baseSalary) : Number(struct.basic || 0);
 
-  const employerPf = Number(struct.employerPf || Math.round(basic * 0.12));
-  const employeePf = Number(struct.employeePf || Math.round(basic * 0.12));
-  const esi = Number(struct.esi || 0);
-  const professionalTax = Number(struct.professionalTax || 200);
-  const tds = Number(struct.tds || employee.taxDeductions || 0);
+  let hra = 0, da = 0, sa = 0, conveyance = 0, otherAllowances = 0;
+  if (employee.allowances !== undefined) {
+    otherAllowances = Number(employee.allowances);
+  } else {
+    hra = Number(struct.hra || Math.round(basic * 0.4));
+    da = Number(struct.da || 0);
+    sa = Number(struct.sa || 0);
+    conveyance = Number(struct.conveyance || 0);
+    otherAllowances = Number(struct.otherAllowances || 0);
+  }
+
+  let employerPf = 0, employeePf = 0, esi = 0, professionalTax = 0, tds = 0;
+  if (employee.taxDeductions !== undefined) {
+    tds = Number(employee.taxDeductions); // Roll all deductions into one field if overriding
+  } else {
+    employerPf = Number(struct.employerPf || Math.round(basic * 0.12));
+    employeePf = Number(struct.employeePf || Math.round(basic * 0.12));
+    esi = Number(struct.esi || 0);
+    professionalTax = Number(struct.professionalTax || 200);
+    tds = Number(struct.tds || 0);
+  }
 
   const grossSalary = basic + hra + da + sa + conveyance + otherAllowances;
 

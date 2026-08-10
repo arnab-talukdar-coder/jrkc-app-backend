@@ -105,9 +105,13 @@ const EmployeeSchema = new mongoose.Schema({
 
   // FCM Push Token
   fcmToken: String,
+  expoPushToken: String,
 
   // Attendance Logs
-  recentLogs: [LogSchema]
+  recentLogs: [LogSchema],
+
+  // Authentication
+  refreshToken: String
 }, { timestamps: true });
 
 // Indexes for performance

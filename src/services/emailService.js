@@ -91,6 +91,37 @@ const SENDER = process.env.GMAIL_USER
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.GMAIL_USER || 'admin@jrkc.com';
 
 /**
+ * Helper to send Expo Push Notification
+ */
+export async function sendExpoPushNotification(expoPushToken, title, body, data = {}) {
+  if (!expoPushToken) return;
+  if (!expoPushToken.startsWith('ExponentPushToken[')) return; // Basic validation
+
+  try {
+    const message = {
+      to: expoPushToken,
+      sound: 'default',
+      title: title,
+      body: body,
+      data: data,
+    };
+
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+    console.log(`📱 Push notification sent to ${expoPushToken}`);
+  } catch (error) {
+    console.error('⚠️ Failed to send Expo Push Notification:', error);
+  }
+}
+
+/**
  * 1. Send Registration Notification to Admin/Director
  */
 export async function sendAdminRegistrationAlert(requestDetails) {
@@ -659,4 +690,55 @@ export async function sendDelayedPayslipDisbursementEmail(payslip) {
     text: `Salary Disbursed for ${payslip.payPeriod}. Net Salary: ₹${payslip.netPay}.`,
     html
   });
+}
+
+/**
+ * 7. Send Password Reset Notification to Employee (Admin-triggered reset)
+ */
+export async function sendPasswordResetEmail(employeeDetails, newPassword) {
+  const mailer = await getTransporter();
+  const subject = `[Security Alert] Your JRKC Portal Password Has Been Reset`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 22px; border: 1px solid #f59e0b; border-radius: 10px; background-color: #ffffff;">
+      <div style="border-bottom: 2px solid #d97706; padding-bottom: 12px; margin-bottom: 16px;">
+        <h2 style="color: #d97706; margin: 0;">🔐 Password Reset Notification</h2>
+      </div>
+
+      <p style="color: #334155; font-size: 14px; line-height: 1.5;">
+        Hello <strong>${employeeDetails.name}</strong>,<br>
+        Your JRKC HR Portal password has been <strong>reset by the Administrator</strong>. Please use the new credentials below to sign in.
+      </p>
+
+      <!-- Credentials Card -->
+      <div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 18px; border-radius: 8px; margin: 20px 0;">
+        <h4 style="color: #92400e; margin: 0 0 10px 0; font-size: 15px;">🔑 Your Updated Login Credentials:</h4>
+        <p style="margin: 4px 0; color: #1e293b; font-size: 13.5px;"><strong>Login Email:</strong> ${employeeDetails.email}</p>
+        <p style="margin: 8px 0 4px 0; color: #1e293b; font-size: 13.5px;">
+          <strong>New Password:</strong>
+          <span style="font-family: monospace; font-size: 15px; font-weight: bold; color: #4f46e5; background: #e0e7ff; padding: 4px 10px; border-radius: 4px; border: 1px solid #c7d2fe;">${newPassword}</span>
+        </p>
+        <p style="color: #92400e; font-size: 12px; margin-top: 10px; font-style: italic;">
+          🔒 If you did not request this reset, please contact HR immediately. We strongly recommend changing your password after signing in.
+        </p>
+      </div>
+
+      <div style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+        JRKC Rail Infra Private Limited • CIN-U30204UP2023PTC187418<br>
+        "Smart Rail Infra, Stronger Nation."
+      </div>
+    </div>
+  `;
+
+  try {
+    return await mailer.sendMail({
+      from: SENDER,
+      to: employeeDetails.email,
+      subject,
+      text: `Your JRKC HR Portal password has been reset by the Administrator. New Password: ${newPassword}. Please log in and change it immediately.`,
+      html
+    });
+  } catch (err) {
+    console.error(`❌ Failed sending password reset email to (${employeeDetails.email}):`, err.message);
+  }
 }

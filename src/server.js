@@ -236,6 +236,7 @@ app.post(['/api/admin/clear-all-data', '/api/admin/reset-data'], authenticateTok
       await Approval.deleteMany({});
       await Payslip.deleteMany({});
       await Notification.deleteMany({});
+      await Project.updateMany({}, { assignedEmployeeIds: [] });
     }
   } catch (e) {
     console.error('Clear DB data error:', e.message);

@@ -7,7 +7,16 @@ export const getProjects = async (req, res) => {
   try {
     if (mongoose.connection.readyState === 1) {
       const projects = await Project.find().sort({ createdAt: -1 });
-      return res.json(projects);
+      const activeEmps = await Employee.find({}, { id: 1, idCardNo: 1 });
+      const validEmpIds = new Set(activeEmps.flatMap(e => [e.id, e.idCardNo].filter(Boolean)));
+
+      const sanitizedProjects = projects.map(p => {
+        const obj = p.toObject();
+        obj.assignedEmployeeIds = (obj.assignedEmployeeIds || []).filter(id => validEmpIds.has(id));
+        return obj;
+      });
+
+      return res.json(sanitizedProjects);
     }
   } catch (e) {
     console.error('Error fetching projects:', e);

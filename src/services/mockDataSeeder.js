@@ -1,6 +1,7 @@
 /**
  * Development Mock Data Seeder
  * Ensures CMD (JRKCRIPL/001) and HR (JRKCRIPL/002) accounts exist,
+ * updates existing DB records to JRKCRIPL/001 and JRKCRIPL/002,
  * and clears out non-CMD/HR user data.
  */
 
@@ -72,9 +73,19 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
     };
 
     if (isDbConnected) {
-      // Keep only CMD and HR in Database
-      await Employee.deleteMany({ email: { $nin: ['cmd@jrkcrail.com', 'hr@jrkcrail.com', 'admin@jrkc.com', 'hr@jrkc.com'] } });
+      // 1. Update any existing Admin / CMD user in DB to JRKCRIPL/001
+      await Employee.updateMany(
+        { $or: [{ userRole: 'Admin' }, { role: /Director/i }, { role: /CMD/i }, { email: 'admin@jrkc.com' }, { email: 'cmd@jrkcrail.com' }, { id: 'ADM-CMD' }, { id: /^ADM-/i }] },
+        { $set: { id: 'JRKCRIPL/001', idCardNo: 'JRKCRIPL/001', name: 'CMD' } }
+      );
 
+      // 2. Update any existing HR user in DB to JRKCRIPL/002
+      await Employee.updateMany(
+        { $or: [{ userRole: 'HR' }, { role: /HR/i }, { email: 'hr@jrkc.com' }, { email: 'hr@jrkcrail.com' }, { id: 'ADM-HR' }, { id: /^HR-/i }] },
+        { $set: { id: 'JRKCRIPL/002', idCardNo: 'JRKCRIPL/002', name: 'HR' } }
+      );
+
+      // 3. Ensure CMD user exists
       let cmdUser = await Employee.findOne({ $or: [{ id: 'JRKCRIPL/001' }, { email: 'cmd@jrkcrail.com' }] });
       if (!cmdUser) {
         await Employee.create(cmdData);
@@ -88,6 +99,7 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
         await cmdUser.save();
       }
 
+      // 4. Ensure HR user exists
       let hrUser = await Employee.findOne({ $or: [{ id: 'JRKCRIPL/002' }, { email: 'hr@jrkcrail.com' }] });
       if (!hrUser) {
         await Employee.create(hrData);
@@ -100,6 +112,9 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
         if (!hrUser.password) hrUser.password = hashedHrPassword;
         await hrUser.save();
       }
+
+      // 5. Delete all non-CMD/HR employees
+      await Employee.deleteMany({ id: { $nin: ['JRKCRIPL/001', 'JRKCRIPL/002'] } });
     }
 
     // Keep only CMD & HR in memory array

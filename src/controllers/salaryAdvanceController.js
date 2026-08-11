@@ -126,10 +126,11 @@ export const requestAdvance = async (req, res) => {
 
 export const getEmployeeAdvance = async (req, res) => {
   try {
-    const { employeeId } = req.params;
-    let emp = memEmployees.find(e => e.id === employeeId || e.email === employeeId);
+    const rawId = req.params.employeeId || req.params[0];
+    const employeeId = rawId ? decodeURIComponent(rawId.replace(/^\/+/, '')) : '';
+    let emp = memEmployees.find(e => e.id === employeeId || e.idCardNo === employeeId || e.email === employeeId);
     if (!emp && mongoose.connection.readyState === 1) {
-      emp = await Employee.findOne({ $or: [{ id: employeeId }, { email: employeeId }] });
+      emp = await Employee.findOne({ $or: [{ id: employeeId }, { idCardNo: employeeId }, { email: employeeId }] });
     }
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
 

@@ -5,8 +5,8 @@ import { updateEmployeeQuotaSalary, updateEmployeeProfile } from '../controllers
 const router = express.Router();
 
 // Base path: /api/hr/employees
-router.put('/:id/leave-quota', authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeQuotaSalary);
-router.put('/:id/salary', authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeQuotaSalary);
-router.put('/:id/profile', authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeProfile);
+router.put(['/:id/leave-quota', '/*/leave-quota'], authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeQuotaSalary);
+router.put(['/:id/salary', '/*/salary'], authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeQuotaSalary);
+router.put(['/:id/profile', '/*/profile'], authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeProfile);
 
 export default router;

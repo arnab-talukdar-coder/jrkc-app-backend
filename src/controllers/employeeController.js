@@ -195,7 +195,8 @@ export const requestPhotoChange = async (req, res) => {
 };
 
 export const updateEmployeeQuotaSalary = async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id || req.params[0];
+  const id = rawId ? decodeURIComponent(rawId.replace(/^\/+/, '').replace(/\/(leave-quota|salary)$/, '')) : '';
   const { ptoDays, sickDays, casualDays, baseSalary, allowances, taxDeductions, salaryStructure } = req.body;
   const updateData = {};
   if (ptoDays !== undefined) updateData.ptoDays = Number(ptoDays);
@@ -208,14 +209,14 @@ export const updateEmployeeQuotaSalary = async (req, res) => {
 
   try {
     if (mongoose.connection.readyState === 1) {
-      const updated = await Employee.findOneAndUpdate({ id }, updateData, { new: true });
+      const updated = await Employee.findOneAndUpdate({ $or: [{ id }, { idCardNo: id }] }, updateData, { new: true });
       if (updated) {
         await createNotification({ targetRole: 'Employee', recipientId: id, title: 'Salary & Quota Updated', message: `Your salary structure / leave quota has been updated.`, type: 'quota_update' });
         return res.json(updated);
       }
     }
   } catch (e) {}
-  const emp = memEmployees.find(e => e.id === id);
+  const emp = memEmployees.find(e => e.id === id || e.idCardNo === id);
   if (emp) {
     Object.assign(emp, updateData);
     saveDiskStore();
@@ -226,7 +227,8 @@ export const updateEmployeeQuotaSalary = async (req, res) => {
 };
 
 export const updateEmployeeProfile = async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id || req.params[0];
+  const id = rawId ? decodeURIComponent(rawId.replace(/^\/+/, '').replace(/\/profile$/, '')) : '';
   const {
     name, role, department, email, phone, reportingManager,
     ptoDays, sickDays, casualDays, dob, dateOfBirth, bloodGroup, station,

@@ -40,7 +40,7 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
       role: 'Managing Director',
       userRole: 'Admin',
       department: 'Management',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+      avatar: 'https://ui-avatars.com/api/?name=CMD&background=0284c7&color=fff&bold=true',
       status: 'Clocked Out',
       accountStatus: 'approved',
       joiningDate: '2024-01-01',
@@ -61,7 +61,7 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
       role: 'HR Manager',
       userRole: 'HR',
       department: 'Human Resources',
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+      avatar: 'https://ui-avatars.com/api/?name=HR&background=7c3aed&color=fff&bold=true',
       status: 'Clocked Out',
       accountStatus: 'approved',
       joiningDate: '2024-01-15',
@@ -96,6 +96,7 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
         cmdUser.name = 'CMD';
         cmdUser.userRole = 'Admin';
         if (!cmdUser.password) cmdUser.password = hashedAdminPassword;
+        if (!cmdUser.avatar || cmdUser.avatar.includes('unsplash.com')) cmdUser.avatar = cmdData.avatar;
         await cmdUser.save();
       }
 
@@ -110,6 +111,7 @@ export async function seedDevelopmentData(targetEmail = '', memEmployees = [], m
         hrUser.name = 'HR';
         hrUser.userRole = 'HR';
         if (!hrUser.password) hrUser.password = hashedHrPassword;
+        if (!hrUser.avatar || hrUser.avatar.includes('unsplash.com')) hrUser.avatar = hrData.avatar;
         await hrUser.save();
       }
 

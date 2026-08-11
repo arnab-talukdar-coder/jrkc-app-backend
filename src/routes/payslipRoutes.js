@@ -12,7 +12,7 @@ const router = express.Router();
 
 router.post('/generate-auto', authenticateToken, requireRole('Admin', 'HR'), generateAutoPayslip);
 router.post('/generate', authenticateToken, requireRole('Admin', 'HR'), generatePayslip);
-router.get('/employee/:employeeId', authenticateToken, getEmployeePayslips);
+router.get(['/employee/:employeeId', '/employee/*'], authenticateToken, getEmployeePayslips);
 router.get('/', authenticateToken, getPayslips);
 router.post('/:id/mark-paid', authenticateToken, requireRole('Admin', 'HR'), markPayslipPaid);
 

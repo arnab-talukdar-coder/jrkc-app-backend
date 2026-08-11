@@ -467,6 +467,8 @@ app.put('/api/admin/employees/:id/assign-location', authenticateToken, requireRo
 app.use('/api/employees', employeeRoutes);
 app.use('/api/hr/employees', hrEmployeeRoutes);
 
+// Mount Attendance Routes
+app.use('/api/attendance', attendanceRoutes);
 
 // Mount Approval & Leave Routes
 app.use('/api/approvals', approvalRoutes);

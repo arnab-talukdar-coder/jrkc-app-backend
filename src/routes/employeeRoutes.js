@@ -18,6 +18,6 @@ router.post('/', authenticateToken, requireRole('Admin', 'HR'), onboardEmployee)
 router.post('/photo-request', authenticateToken, requestPhotoChange);
 
 // Profile and Quota Updates
-router.put('/:id', authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeProfile);
+router.put(['/:id', '/*'], authenticateToken, requireRole('Admin', 'HR', 'Director'), updateEmployeeProfile);
 
 export default router;

@@ -187,14 +187,15 @@ export const generatePayslip = async (req, res) => {
 };
 
 export const getEmployeePayslips = async (req, res) => {
-  const { employeeId } = req.params;
+  const rawId = req.params.employeeId || req.params[0];
+  const employeeId = rawId ? decodeURIComponent(rawId.replace(/^\/+/, '')) : '';
   try {
     if (mongoose.connection.readyState === 1) {
-      const list = await Payslip.find({ employeeId }).sort({ createdAt: -1 });
+      const list = await Payslip.find({ $or: [{ employeeId }, { employeeEmail: employeeId }] }).sort({ createdAt: -1 });
       if (list.length > 0) return res.json(list);
     }
   } catch (e) {}
-  res.json(memPayslips.filter(p => p.employeeId === employeeId));
+  res.json(memPayslips.filter(p => p.employeeId === employeeId || p.employeeEmail === employeeId));
 };
 
 export const getPayslips = async (req, res) => {

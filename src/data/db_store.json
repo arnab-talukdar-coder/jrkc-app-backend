@@ -1,12 +1,13 @@
 {
   "memEmployees": [
     {
-      "id": "ADM-CMD",
+      "id": "JRKCRIPL/001",
+      "idCardNo": "JRKCRIPL/001",
       "name": "CMD",
       "email": "cmd@jrkcrail.com",
       "phone": "",
       "department": "Management",
-      "role": "admin",
+      "role": "Managing Director",
       "userRole": "Admin",
       "status": "Clocked Out",
       "accountStatus": "approved",
@@ -18,13 +19,14 @@
       "recentLogs": []
     },
     {
-      "id": "ADM-HR",
+      "id": "JRKCRIPL/002",
+      "idCardNo": "JRKCRIPL/002",
       "name": "HR",
       "email": "hr@jrkcrail.com",
       "phone": "",
-      "department": "Management",
-      "role": "hr",
-      "userRole": "Admin",
+      "department": "Human Resources",
+      "role": "HR Manager",
+      "userRole": "HR",
       "status": "Clocked Out",
       "accountStatus": "approved",
       "ptoDays": 18,

@@ -69,6 +69,7 @@ import {
 } from './data/initialData.js';
 import { calculateSalaryForEmployee, calculateMonSatWorkingDays, calculateGrossSalary, generateRepaymentSchedule } from './services/payrollService.js';
 import { seedDevelopmentData } from './services/mockDataSeeder.js';
+import { generateNextEmployeeId } from './utils/idGenerator.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
@@ -332,9 +333,10 @@ app.post('/api/admin/registration-requests/:id/approve', authenticateToken, requ
 
   const tempPassword = 'JRKC#' + Math.floor(100000 + Math.random() * 900000);
   const userPassword = await bcrypt.hash(tempPassword, 10);
+  const newEmpId = await generateNextEmployeeId(memEmployees);
 
   const newEmp = {
-    id: `EMP-${Date.now().toString(36).toUpperCase()}`,
+    id: newEmpId,
     name: regItem.name,
     email: regItem.email.toLowerCase().trim(),
     phone: regItem.phone || '',
@@ -348,7 +350,7 @@ app.post('/api/admin/registration-requests/:id/approve', authenticateToken, requ
     joiningDate: new Date().toLocaleDateString('en-IN'),
     dateOfBirth: dob || '', dob: dob || '',
     bloodGroup: bloodGroup || '', station: station || '',
-    idCardNo: `JRKCRIPL/${Math.floor(100 + Math.random() * 900)}`,
+    idCardNo: newEmpId,
     validity: validity || '',
     assignedHrId: hrObj.id, assignedHrName: hrObj.name, assignedHrEmail: hrObj.email,
     salaryStructure: salaryStructure || { basic: 30000, hra: 12000, da: 0, sa: 8000, employerPf: 3600, employeePf: 3600 },

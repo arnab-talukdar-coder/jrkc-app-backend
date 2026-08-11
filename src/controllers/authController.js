@@ -11,6 +11,7 @@ import {
   sendEmployeeApprovalEmail
 } from '../services/emailService.js';
 import { createNotification } from '../services/notificationService.js';
+import { generateNextEmployeeId } from '../utils/idGenerator.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jrkc-hrms-secret-2026';
 
@@ -110,8 +111,10 @@ export const registerAdmin = async (req, res) => {
   if (existing) return res.status(409).json({ error: 'An account with this email already exists.' });
 
   const hashedPassword = await bcrypt.hash(password, 10);
+  const newEmpId = await generateNextEmployeeId(memEmployees);
   const newAdmin = {
-    id: `ADM-${Date.now().toString(36).toUpperCase()}`,
+    id: newEmpId,
+    idCardNo: newEmpId,
     name: sanitizeString(name),
     email: email.toLowerCase().trim(),
     phone: phone || '',
@@ -149,12 +152,13 @@ export const initAdminAccounts = async (req, res) => {
 
   const adminUsers = [
     {
-      id: 'ADM-CMD',
+      id: 'JRKCRIPL/001',
+      idCardNo: 'JRKCRIPL/001',
       name: 'CMD',
       email: 'cmd@jrkcrail.com',
       phone: '',
       department: 'Management',
-      role: 'Director',
+      role: 'Managing Director',
       userRole: 'Admin',
       status: 'Clocked Out',
       accountStatus: 'approved',
@@ -164,13 +168,14 @@ export const initAdminAccounts = async (req, res) => {
       recentLogs: []
     },
     {
-      id: 'ADM-HR',
+      id: 'JRKCRIPL/002',
+      idCardNo: 'JRKCRIPL/002',
       name: 'HR',
       email: 'hr@jrkcrail.com',
       phone: '',
       department: 'Human Resources',
       role: 'HR Manager',
-      userRole: 'Admin',
+      userRole: 'HR',
       status: 'Clocked Out',
       accountStatus: 'approved',
       password: hashedPassword,

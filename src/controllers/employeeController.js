@@ -6,6 +6,7 @@ import { memEmployees, memApprovals, saveDiskStore } from '../data/store.js';
 import { validateEmail, sanitizeString } from '../middleware/auth.js';
 import { sendRegistrationConfirmationToEmployee } from '../services/emailService.js';
 import { createNotification } from '../services/notificationService.js';
+import { generateNextEmployeeId } from '../utils/idGenerator.js';
 
 export const registerPushToken = async (req, res) => {
   const { pushToken } = req.body;
@@ -124,9 +125,10 @@ export const onboardEmployee = async (req, res) => {
   for (let i = 0; i < 10; i++) plainPassword += chars[Math.floor(Math.random() * chars.length)];
 
   const hashedPassword = await bcrypt.hash(plainPassword, 10);
+  const newEmpId = await generateNextEmployeeId(memEmployees);
 
   const newEmp = {
-    id: `EMP-${Date.now().toString(36).toUpperCase()}`,
+    id: newEmpId,
     name: sanitizeString(name), email: email.toLowerCase().trim(), phone: phone || '',
     department: sanitizeString(department) || 'Operations', role: sanitizeString(role) || 'Site Engineer',
     userRole: userRole || 'Employee', status: 'Clocked Out', accountStatus: 'approved',
@@ -135,7 +137,7 @@ export const onboardEmployee = async (req, res) => {
     joiningDate: joiningDate || new Date().toLocaleDateString('en-IN'),
     dateOfBirth: dateOfBirth || dob || '', dob: dob || dateOfBirth || '',
     bloodGroup: bloodGroup || '', station: station || '',
-    idCardNo: `JRKCRIPL/${Math.floor(100 + Math.random() * 900)}`, validity: validity || '',
+    idCardNo: newEmpId, validity: validity || '',
     salaryStructure: salaryStructure || { basic: 0, hra: 0, da: 0, sa: 0, employerPf: 0, employeePf: 0 },
     recentLogs: []
   };

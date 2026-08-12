@@ -68,7 +68,6 @@ import {
   INITIAL_BANK_DETAILS
 } from './data/initialData.js';
 import { calculateSalaryForEmployee, calculateMonSatWorkingDays, calculateGrossSalary, generateRepaymentSchedule } from './services/payrollService.js';
-import { seedDevelopmentData } from './services/mockDataSeeder.js';
 import { generateNextEmployeeId } from './utils/idGenerator.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
 import authRoutes from './routes/authRoutes.js';
@@ -157,9 +156,7 @@ async function initDatabase() {
       if (settingsCount === 0) {
         await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
       }
-      // Ensure system CMD & HR accounts exist safely without deleting user data
-      await seedDevelopmentData();
-      console.log('✅ Database connected.');
+      console.log('✅ Database connected successfully.');
     } else {
       console.log('⚡ Operating in fallback mode (MongoDB not connected).');
     }
@@ -248,12 +245,6 @@ app.post(['/api/admin/clear-all-data', '/api/admin/reset-data'], authenticateTok
   memPayslips.length = 0;
   memNotifications.length = 0;
 
-  // Re-seed clean initial data
-  try {
-    await seedDevelopmentData('arnab.talukdar07@gmail.com', memEmployees, memApprovals, memPayslips, saveDiskStore);
-  } catch (e) {
-    console.error('Re-seed data error:', e.message);
-  }
   saveDiskStore();
 
   res.json({

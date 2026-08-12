@@ -157,10 +157,9 @@ async function initDatabase() {
       if (settingsCount === 0) {
         await HRSettings.create({ id: 'HR_SETTINGS_GLOBAL', lwpDeductionBasis: 'basic' });
       }
-      if (process.env.NODE_ENV !== 'production') {
-        await seedDevelopmentData('arnab.talukdar07@gmail.com');
-      }
-      console.log('✅ Database connected & initial seeding complete.');
+      // Ensure system CMD & HR accounts exist safely without deleting user data
+      await seedDevelopmentData();
+      console.log('✅ Database connected.');
     } else {
       console.log('⚡ Operating in fallback mode (MongoDB not connected).');
     }

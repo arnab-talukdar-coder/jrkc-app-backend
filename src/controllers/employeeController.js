@@ -119,10 +119,13 @@ export const onboardEmployee = async (req, res) => {
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
   if (!validateEmail(email)) return res.status(400).json({ error: 'Invalid email address' });
 
-  // Auto-generate a secure random password
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
-  let plainPassword = '';
-  for (let i = 0; i < 10; i++) plainPassword += chars[Math.floor(Math.random() * chars.length)];
+  // Auto-generate a secure random password if not provided
+  let plainPassword = req.body.password ? req.body.password.trim() : '';
+  if (!plainPassword) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    plainPassword = 'Jrkc@';
+    for (let i = 0; i < 5; i++) plainPassword += chars[Math.floor(Math.random() * chars.length)];
+  }
 
   const hashedPassword = await bcrypt.hash(plainPassword, 10);
   const newEmpId = await generateNextEmployeeId(memEmployees);
@@ -161,7 +164,7 @@ export const onboardEmployee = async (req, res) => {
     console.error('⚠️ Failed to send welcome email:', emailErr.message);
   }
 
-  res.status(201).json({ ...newEmp, password: undefined });
+  res.status(201).json({ ...newEmp, password: plainPassword, generatedPassword: plainPassword });
 };
 
 export const requestPhotoChange = async (req, res) => {

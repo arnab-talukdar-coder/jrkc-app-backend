@@ -1,10 +1,11 @@
 import express from 'express';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
 import {
   getStatus,
   clockIn,
   clockOut,
-  getHistory
+  getHistory,
+  updateAttendanceByAdmin
 } from '../controllers/attendanceController.js';
 
 const router = express.Router();

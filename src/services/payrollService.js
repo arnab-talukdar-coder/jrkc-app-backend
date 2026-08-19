@@ -176,7 +176,7 @@ export function calculateSalaryForEmployee(
     logs.forEach(l => {
       if (l.date && l.date.startsWith(monthPrefix)) uniqueDates.add(l.date);
     });
-    calculatedAttendanceDays = uniqueDates.size > 0 ? uniqueDates.size : totalWorkingDays;
+    calculatedAttendanceDays = uniqueDates.size; // 0 if no logs found in month
   }
 
   // adjustedAttendanceDays is null if no manual override

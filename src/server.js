@@ -102,21 +102,11 @@ app.get(['/', '/health', '/api', '/api/health'], (req, res) => {
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // CORS & No-Cache
+app.use(cors({ origin: true, credentials: true }));
 app.use((req, res, next) => {
   res.header('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.header('Pragma', 'no-cache');
   res.header('Expires', '0');
-
-  const origin = req.headers.origin;
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 

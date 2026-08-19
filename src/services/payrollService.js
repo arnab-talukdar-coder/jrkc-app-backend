@@ -16,14 +16,7 @@ const MONTH_NAMES = [
  */
 export function calculateGrossSalary(employee) {
   if (!employee) return 0;
-  const struct = employee.salaryStructure || {};
-  const basic = Number(struct.basic || employee.baseSalary || 0);
-  const hra = Number(struct.hra || Math.round(basic * 0.4));
-  const da = Number(struct.da || 0);
-  const sa = Number(struct.sa || 0);
-  const conveyance = Number(struct.conveyance || 0);
-  const otherAllowances = Number(struct.otherAllowances || employee.allowances || 0);
-  return basic + hra + da + sa + conveyance + otherAllowances;
+  return Number(employee.baseSalary || 0) + Number(employee.allowances || 0);
 }
 
 /**

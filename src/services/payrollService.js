@@ -165,7 +165,7 @@ export function calculateSalaryForEmployee(
   // Priority: customAttendanceDays > Attendance collection records > recentLogs fallback
   let calculatedAttendanceDays;
 
-  if (attendanceRecords && attendanceRecords.length > 0) {
+  if (Array.isArray(attendanceRecords)) {
     // Count from actual Attendance collection — unique dates this month
     const monthRecords = attendanceRecords.filter(r => r.date && r.date.startsWith(monthPrefix));
     calculatedAttendanceDays = countAttendanceDays(monthRecords);

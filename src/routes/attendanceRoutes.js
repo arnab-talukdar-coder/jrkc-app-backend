@@ -12,6 +12,9 @@ const router = express.Router();
 // All attendance routes require authentication
 router.use(authenticateToken);
 
+// Admin / HR update attendance
+router.put('/admin-update/:id', requireRole('HR', 'Director', 'Admin'), updateAttendanceByAdmin);
+
 // Get current day's attendance status
 router.get('/status', getStatus);
 

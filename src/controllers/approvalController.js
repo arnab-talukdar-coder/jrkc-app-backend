@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Employee } from '../models/Employee.js';
 import { Approval } from '../models/Approval.js';
 import { HRSettings } from '../models/HRSettings.js';
+import { Attendance } from '../models/Attendance.js';
 import { memEmployees, memApprovals, saveDiskStore } from '../data/store.js';
 import { sanitizeString } from '../middleware/auth.js';
 import { sendLeaveRequestAlert, sendLeaveStatusNotification } from '../services/emailService.js';
@@ -233,14 +234,59 @@ export const approveRejectLeave = async (req, res) => {
         }
       );
       if (emp && !isPhotoType) {
-        await Employee.findOneAndUpdate(
-          { $or: [{ id: emp.id }, { email: emp.email }] },
-          {
+        let updateQuery = {
+          $set: {
             lwpDaysTaken: emp.lwpDaysTaken,
             ptoDaysTaken: emp.ptoDaysTaken,
             sickDaysTaken: emp.sickDaysTaken,
             casualDaysTaken: emp.casualDaysTaken
           }
+        };
+
+        if (nextStatus === 'approved' && item.type === 'Attendance Regularization') {
+          let attDate = item.regularizationDate;
+          if (!attDate && item.details) {
+            const match = item.details.match(/(\d{4}[-/]\d{2}[-/]\d{2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})/);
+            if (match) attDate = match[1];
+          }
+          if (!attDate) attDate = item.dateSubmitted;
+          const inTime = item.requestedClockIn || '09:00 AM';
+          const outTime = item.requestedClockOut || '06:00 PM';
+          const nowStr = new Date().toISOString();
+          
+          await Attendance.findOneAndUpdate(
+            { employeeId: emp.id, date: attDate },
+            { 
+              employeeEmail: emp.email,
+              status: 'CLOCKED_OUT',
+              clockInTime: inTime,
+              clockInTimestamp: new Date(attDate + 'T09:00:00Z'),
+              clockOutTime: outTime,
+              clockOutTimestamp: new Date(attDate + 'T18:00:00Z'),
+              durationMinutes: 540
+            },
+            { upsert: true, new: true }
+          );
+
+          updateQuery.$push = {
+            recentLogs: {
+              $each: [{
+                type: 'clock_punch',
+                date: attDate,
+                clockInTime: inTime,
+                clockOutTime: outTime,
+                status: 'Completed',
+                projectName: 'Regularized',
+                createdAt: nowStr
+              }],
+              $position: 0
+            }
+          };
+        }
+
+        await Employee.findOneAndUpdate(
+          { $or: [{ id: emp.id }, { email: emp.email }] },
+          updateQuery
         );
       }
     }

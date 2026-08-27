@@ -21,7 +21,7 @@ async function fetchPayrollDependencies(emp, year, month) {
   const mm = String(realMonthIdx + 1).padStart(2, '0');
   const monthPrefix = `${yyyy}-${mm}`;
 
-  let lwpBasis = 'basic';
+  let lwpBasis = 'gross';
   let approvals = [];
   let salaryAdvances = [];
   let attendanceRecords = [];
@@ -29,7 +29,7 @@ async function fetchPayrollDependencies(emp, year, month) {
   try {
     if (mongoose.connection.readyState === 1) {
       const s = await HRSettings.findOne({ id: 'HR_SETTINGS_GLOBAL' });
-      if (s?.lwpDeductionBasis) lwpBasis = s.lwpDeductionBasis;
+      if (s?.lwpDeductionBasis) lwpBasis = 'gross'; // forced
     }
   } catch (e) {}
 

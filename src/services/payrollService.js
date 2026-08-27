@@ -105,7 +105,7 @@ export function calculateSalaryForEmployee(
   employee,
   year,
   monthInput,
-  lwpDeductionBasis = 'basic',
+  lwpDeductionBasis = 'gross',
   approvals = [],
   customLwpDays = null,
   salaryAdvances = [],

@@ -442,47 +442,47 @@ function createPayslipPDFBuffer(payslip) {
       doc.fillColor('#475569').fontSize(9).text('PAYMENT MODE', 400, 168);
       doc.fillColor('#000000').fontSize(10).text('Direct Bank Deposit (Verified)', 400, 180);
 
-      // Table Header (Earnings & Deductions)
+      // Table Header (Salary Component)
       doc.rect(32, 205, 531, 24).fill('#f1f5f9');
       doc.rect(32, 205, 531, 24).strokeColor('#000000').lineWidth(1.5).stroke();
       
       doc.fillColor('#000000').fontSize(9);
-      doc.text('EARNINGS COMPONENT', 45, 212);
-      doc.text('AMOUNT (INR)', 210, 212);
-      doc.text('DEDUCTIONS COMPONENT', 310, 212);
+      doc.text('SALARY COMPONENT', 45, 212);
       doc.text('AMOUNT (INR)', 470, 212);
 
       // Breakdown Rows
       let y = 235;
       const rows = [
-        ['Basic Salary', 'INR ' + basic.toLocaleString('en-IN'), 'Employer PF', 'INR ' + employerPf.toLocaleString('en-IN')],
-        ['Salary of Attendance', 'INR ' + salaryOfAttendance.toLocaleString('en-IN') + '.00', 'E.S.I.', 'INR ' + esi.toLocaleString('en-IN')],
-        ['House Rent Allowance (HRA)', 'INR ' + hra.toLocaleString('en-IN'), 'Advance / Loan', 'INR ' + (advance + loan).toLocaleString('en-IN')],
-        ['Dearness Allowance (DA)', 'INR ' + da.toLocaleString('en-IN'), 'Income Tax (TDS)', 'INR ' + incomeTax.toLocaleString('en-IN')],
-        ['Special Allowance (SA)', 'INR ' + sa.toLocaleString('en-IN'), 'Employee PF', 'INR ' + employeePf.toLocaleString('en-IN')],
-        ['Other Allowances', 'INR 0.00', 'Other Deductions', 'INR ' + other.toLocaleString('en-IN')]
+        ['Basic Salary (Full)', 'INR ' + basic.toLocaleString('en-IN')],
+        ['HRA + DA + SA + Conveyance', '+INR ' + (hra + da + sa + conveyance + otherAllowances).toLocaleString('en-IN')],
+        ['Gross CTC Salary', 'INR ' + grossSalary.toLocaleString('en-IN')],
+        ['EE & ER PF + Prof. Tax + TDS', '-INR ' + totalDeductions.toLocaleString('en-IN')]
       ];
 
-      rows.forEach((row) => {
-        doc.rect(32, y - 4, 531, 22).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
-        doc.fillColor('#1e293b').fontSize(9).text(row[0], 45, y);
-        doc.text(row[1], 200, y, { width: 90, align: 'right' });
-
-        doc.fillColor('#1e293b').text(row[2], 310, y);
-        doc.fillColor('#dc2626').text(row[3], 460, y, { width: 90, align: 'right' });
-        y += 22;
+      rows.forEach((row, index) => {
+        const isBold = (index === 2);
+        doc.rect(32, y - 4, 531, 24).fill(isBold ? '#f8fafc' : '#ffffff');
+        doc.rect(32, y - 4, 531, 24).strokeColor('#cbd5e1').lineWidth(0.5).stroke();
+        
+        doc.fillColor('#1e293b').fontSize(10);
+        if (isBold) {
+          doc.font('Helvetica-Bold');
+        } else {
+          doc.font('Helvetica');
+        }
+        
+        doc.text(row[0], 45, y + 4);
+        
+        let color = '#1e293b';
+        if (index === 1) color = '#047857';
+        if (index === 3) color = '#dc2626';
+        
+        doc.fillColor(color).text(row[1], 420, y + 4, { width: 130, align: 'right' });
+        y += 24;
       });
+      doc.font('Helvetica'); // reset
 
-      // Total Gross & Total Deductions Row
-      doc.rect(32, y - 4, 531, 24).fill('#f8fafc');
-      doc.rect(32, y - 4, 531, 24).strokeColor('#000000').lineWidth(1).stroke();
-      doc.fillColor('#000000').fontSize(9).text('GROSS EARNINGS', 45, y + 3);
-      doc.fillColor('#166534').text('INR ' + grossSalary.toLocaleString('en-IN') + '.00', 200, y + 3, { width: 90, align: 'right' });
-
-      doc.fillColor('#000000').text('TOTAL DEDUCTIONS', 310, y + 3);
-      doc.fillColor('#dc2626').text('INR ' + totalDeductions.toLocaleString('en-IN') + '.00', 460, y + 3, { width: 90, align: 'right' });
-
-      y += 35;
+      y += 20;
 
       // Net Salary Disbursed Card Box
       doc.rect(32, y, 531, 55).fill('#f0fdf4');

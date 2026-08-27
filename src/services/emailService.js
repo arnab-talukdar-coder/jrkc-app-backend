@@ -386,6 +386,8 @@ function createPayslipPDFBuffer(payslip) {
       const hra = Number(payslip.hra || 5600);
       const da = Number(payslip.da || 3350);
       const sa = Number(payslip.sa || 6420);
+      const conveyance = Number(payslip.conveyance || 0);
+      const otherAllowances = Number(payslip.otherAllowances || 0);
       const employerPf = Number(payslip.employerPf || Math.round(basic * 0.12));
 
       const esi = Number(payslip.esi || 0);
@@ -393,10 +395,13 @@ function createPayslipPDFBuffer(payslip) {
       const incomeTax = Number(payslip.incomeTax || payslip.taxDeductions || 0);
       const loan = Number(payslip.loan || 0);
       const employeePf = Number(payslip.employeePf || employerPf);
+      const profTax = Number(payslip.professionalTax || 0);
+      const lwpDeduction = Number(payslip.lwpDeduction || 0);
+      const tds = Number(payslip.tds || payslip.incomeTax || payslip.taxDeductions || 0);
       const other = Number(payslip.other || 0);
 
-      const totalDeductions = Number(payslip.totalDeductions) || (employeePf + esi + advance + incomeTax + loan + other);
-      const grossSalary = Number(payslip.grossSalary) || (salaryOfAttendance + hra + da + sa);
+      const totalDeductions = Number(payslip.totalDeductions) || (employeePf + employerPf + esi + profTax + tds + advance + loan + other + lwpDeduction);
+      const grossSalary = Number(payslip.grossSalary) || (salaryOfAttendance + hra + da + sa + conveyance + otherAllowances);
       const netPay = Number(payslip.netPay) || (grossSalary - totalDeductions);
       const amountInWords = numberToWordsRupees(netPay);
 
